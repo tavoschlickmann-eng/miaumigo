@@ -548,9 +548,7 @@ body.no-tabbar .app { padding-bottom: 32px; }
 .auth-notice { display: flex; gap: 10px; align-items: flex-start; margin: 0; padding: 12px; border-radius: 12px; background: var(--ok-soft); color: var(--ink); font-size: 14px; font-weight: 600; }
 .auth-notice .ico { color: var(--ok); margin-top: 1px; }
 .auth-forgot { align-self: center; }
-.auth-skip { align-self: center; background: none; border: 0; color: var(--ink); font-weight: 800; padding: 10px 14px; border-radius: 12px; }
-.auth-skip:hover { background: var(--surface-2); }
-.auth-foot { margin: -10px 0 0; text-align: center; color: var(--muted); font-size: 13px; }
+.auth-foot { margin: 0; text-align: center; color: var(--muted); font-size: 13px; }
 
 .btn-google {
   display: flex; align-items: center; justify-content: center; gap: 12px;
@@ -580,3 +578,24 @@ body.no-tabbar .app { padding-bottom: 32px; }
 .form .input-ico input[name="senha"]:not([type="checkbox"]):not([type="file"]) { padding-right: 46px; }
 .pass-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); display: grid; place-items: center; }
 .pass-toggle:hover { background: var(--surface-2); color: var(--ink); }
+.auth-foot a { color: var(--primary); font-weight: 700; }
+
+/* ---------- Painel de uso ---------- */
+.painel-chart { padding: 14px 10px 10px; }
+.chart-sub { margin: 0 4px 6px; color: var(--muted); font-size: 13px; font-weight: 600; }
+.chart .bar-mark { fill: var(--primary); }
+.chart .bar-hit { cursor: default; }
+.chart .bar-hit.hover .bar-mark { fill: color-mix(in srgb, var(--primary) 78%, var(--ink)); }
+.chart .axis-line { stroke: var(--line); stroke-width: 1; }
+.chart-tip {
+  position: absolute; z-index: 30; pointer-events: none;
+  background: var(--ink); color: var(--bg);
+  padding: 6px 10px; border-radius: 10px; font-size: 13px; font-weight: 700; white-space: nowrap;
+  opacity: 0; transform: translateY(4px); transition: opacity .12s, transform .12s;
+}
+.chart-tip.show { opacity: 1; transform: none; }
+.chart-table { margin: 8px 4px 0; }
+.chart-table summary { cursor: pointer; color: var(--primary); font-weight: 700; font-size: 14px; padding: 6px 0; }
+.chart-table .ctable { width: 100%; margin: 6px 0 0; }
+.bar-top .pct { color: var(--muted); font-weight: 600; margin-left: 4px; }
+.icon-btn.spinning .ico { animation: spin 1s linear infinite; }

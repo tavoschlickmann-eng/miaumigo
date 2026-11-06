@@ -257,10 +257,14 @@ function render() {
   const views = {
     inicio: viewHome, pets: viewPets, pet: viewPet, carteira: viewCarteira, agenda: viewAgenda, gastos: viewGastos,
     entrar: (id) => (typeof viewEntrar === 'function' ? viewEntrar(id) : viewHome()), // tela de login (sync.js)
+    painel: (id) => (typeof viewPainel === 'function' ? viewPainel(id) : viewHome()), // painel de uso (sync.js)
   };
-  const view = views[r.name] || viewHome;
+  // o app só funciona com conta: sem login, qualquer tela vira a tela de login
+  const mustLogin = typeof syncConfigured !== 'undefined' && syncConfigured && typeof isLoggedIn === 'function' && !isLoggedIn();
+  const name = mustLogin ? 'entrar' : r.name;
+  const view = views[name] || viewHome;
   app.innerHTML = view(r.id);
-  document.body.classList.toggle('no-tabbar', r.name === 'entrar' && typeof viewEntrar === 'function');
+  document.body.classList.toggle('no-tabbar', name === 'entrar' && typeof viewEntrar === 'function');
 
   const activeTab = ['pet', 'carteira'].includes(r.name) ? 'pets' : (views[r.name] ? r.name : 'inicio');
   document.querySelectorAll('.tabbar a').forEach((a) => {

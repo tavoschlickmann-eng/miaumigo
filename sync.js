@@ -100,6 +100,78 @@ const supabaseRemote = {
 let remote = supabaseRemote;
 const isLoggedIn = () => !!remote.userId();
 
+/* ---------------- Dono dos dados do aparelho ----------------
+   Os dados locais pertencem a UMA conta (db.owner). Se outra conta entrar
+   neste aparelho, os dados locais são descartados (nunca enviados) e os
+   da nova conta são baixados da nuvem. Isso impede que dados de uma
+   pessoa vazem para a conta de outra. */
+
+const localDataCount = async () => {
+  const n = Object.values(COLLECTIONS).reduce((s, name) => s + db[name].length, 0);
+  const a = await IDB.all().then((x) => x.length).catch(() => 0);
+  return n + a;
+};
+
+/** Apaga os dados deste aparelho (mantém só preferências como horário dos lembretes). */
+async function wipeLocal() {
+  clearTimeout(syncTimer);
+  await IDB.clear().catch(() => {});
+  const keep = { lembretes: db.config.lembretes, horario: db.config.horario };
+  db = emptyDB();
+  Object.assign(db.config, keep);
+  persistLocal();
+  meta = null;
+  localStorage.removeItem(SYNC_KEY);
+  render();
+}
+
+let ownerPromptOpen = false;
+
+/** Garante que os dados locais são da conta `uid`. Retorna false se precisa perguntar ao usuário. */
+async function ensureOwner(uid) {
+  if (db.owner === uid) return true;
+  const claim = () => { db.owner = uid; persistLocal(); return true; };
+  if (db.owner) { await wipeLocal(); return claim(); }                    // dados de outra conta
+  if (meta?.userId === uid) return claim();                                // versão antiga, já sincronizada com esta conta
+  if (meta?.userId) { await wipeLocal(); return claim(); }                 // versão antiga, de outra conta
+  if (!(await localDataCount())) return claim();                           // aparelho vazio
+  askAdopt(uid);                                                           // dados sem dono: a pessoa decide
+  return false;
+}
+
+function askAdopt(uid) {
+  if (ownerPromptOpen) return;
+  ownerPromptOpen = true;
+  const nomes = db.pets.map((p) => p.nome).slice(0, 4).join(', ');
+  const resumo = [
+    db.pets.length ? `${db.pets.length} pet${db.pets.length > 1 ? 's' : ''}${nomes ? ` (${esc(nomes)})` : ''}` : '',
+    db.cuidados.length ? `${db.cuidados.length} cuidado${db.cuidados.length > 1 ? 's' : ''}` : '',
+    db.gastos.length ? `${db.gastos.length} gasto${db.gastos.length > 1 ? 's' : ''}` : '',
+  ].filter(Boolean).join(', ');
+  openSheet('Dados neste aparelho', `
+    <div class="menu">
+      <p>Encontramos dados salvos neste aparelho que não estão ligados a nenhuma conta${resumo ? `: <b>${resumo}</b>` : ''}.</p>
+      <p>Se forem seus, junte à sua conta. Se forem de outra pessoa, descarte: eles não serão enviados.</p>
+      <button class="btn" data-action="adopt-local" data-uid="${esc(uid)}">${icon('cloud', { size: 18 })}Juntar à minha conta</button>
+      <button class="btn danger" data-action="discard-local" data-uid="${esc(uid)}">${icon('trash-2', { size: 18 })}Descartar dados do aparelho</button>
+    </div>`, null);
+}
+
+/** Há algo no aparelho que ainda não foi para a nuvem? */
+async function hasPendingChanges() {
+  if (!meta) return (await localDataCount()) > 0;
+  const present = new Set();
+  for (const name of Object.values(COLLECTIONS)) {
+    for (const rec of db[name]) {
+      present.add(rec.id);
+      if (meta.hashes[rec.id]?.h !== hashOf(rec)) return true;
+    }
+  }
+  if (Object.keys(meta.hashes).some((id) => !present.has(id))) return true;
+  const anexos = await IDB.all().catch(() => []);
+  return anexos.some((a) => !meta.anexos[a.id]) || Object.keys(meta.anexos).some((id) => !anexos.some((a) => a.id === id));
+}
+
 /* ---------------- Sincronização ---------------- */
 
 function applyRemote(target, dados) {
@@ -118,6 +190,7 @@ async function syncNow() {
   setSyncStatus('syncing');
   try {
     const uid = remote.userId();
+    if (!(await ensureOwner(uid))) { setSyncStatus('idle'); return; } // aguardando a pessoa decidir
     if (!meta || meta.userId !== uid) { meta = freshMeta(uid); saveMeta(); }
 
     /* 1. Pull */
@@ -308,12 +381,211 @@ function accountSection() {
     <div class="two">
       <button class="btn plain" data-action="sync-now">${icon('refresh-cw', { size: 18 })}Sincronizar</button>
       <button class="btn plain" data-action="logout">${icon('log-out', { size: 18 })}Sair</button>
-    </div>`;
+    </div>
+    ${isAdmin ? `<button class="btn ghost" data-action="go-painel">${icon('sparkles', { size: 18 })}Painel de uso</button>` : ''}`;
 }
+
+/* ---------------- Painel de uso (administradores) ----------------
+   Quem é administrador é decidido NO BANCO (tabela app_admins, função
+   painel_metricas em supabase/painel.sql). Aqui só escondemos o botão. */
+
+let isAdmin = false;
+const painel = { dados: null, carregando: false, erro: '', em: null };
+
+async function checkAdmin() {
+  if (!sb || !session) { isAdmin = false; return; }
+  const { data, error } = await sb.rpc('is_admin');
+  isAdmin = !error && data === true;
+  if (document.getElementById('sheet').open && document.querySelector('.menu .account')) settingsSheet();
+  if (route().name === 'painel') render();
+}
+
+async function carregarPainel() {
+  painel.carregando = true;
+  painel.erro = '';
+  if (route().name === 'painel') render();
+  const { data, error } = await sb.rpc('painel_metricas');
+  painel.carregando = false;
+  if (error) painel.erro = /negado|42501/.test(error.message + error.code) ? 'Acesso negado.' : authError(error);
+  else { painel.dados = data; painel.em = new Date(); }
+  if (route().name === 'painel') render();
+}
+
+const fmtN = (n) => Number(n || 0).toLocaleString('pt-BR');
+const fmtDia = (iso) => { const [, m, d] = iso.split('-'); return `${d}/${m}`; };
+
+/** Colunas por dia (uma medida só, cor do app). Barras com ponta arredondada e vão de 2px. */
+function dayBars(serie, key, unidade) {
+  const W = 340, H = 150, L = 26, R = 6, T = 10, B = 24;
+  const vals = serie.map((d) => d[key] || 0);
+  const max = Math.max(1, ...vals);
+  const slot = (W - L - R) / serie.length;
+  const bw = Math.max(2, slot - 2);
+  const y = (v) => T + (1 - v / max) * (H - T - B);
+  const base = H - B;
+  const bars = serie.map((d, i) => {
+    const v = vals[i];
+    const x = L + i * slot + 1;
+    const tip = `${fmtDia(d.dia)} · ${fmtN(v)} ${v === 1 ? unidade[0] : unidade[1]}`;
+    let mark = '';
+    if (v > 0) {
+      const top = y(v), h = base - top, r = Math.min(4, h, bw / 2);
+      mark = `<path class="bar-mark" d="M${x},${base} V${top + r} Q${x},${top} ${x + r},${top} H${x + bw - r} Q${x + bw},${top} ${x + bw},${top + r} V${base} Z"/>`;
+    }
+    return `<g class="bar-hit" data-tip="${tip}">${mark}<rect x="${x - 1}" y="${T}" width="${slot}" height="${H - T - B}" fill="transparent"/></g>`;
+  }).join('');
+  const meio = Math.floor(serie.length / 2);
+  return `
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico de barras por dia, últimos 30 dias">
+      <line class="grid" x1="${L}" x2="${W - R}" y1="${y(max)}" y2="${y(max)}"/>
+      <line class="axis-line" x1="${L}" x2="${W - R}" y1="${base}" y2="${base}"/>
+      <text class="axis" x="${L - 6}" y="${y(max) + 4}" text-anchor="end">${fmtN(max)}</text>
+      <text class="axis" x="${L - 6}" y="${base + 4}" text-anchor="end">0</text>
+      ${bars}
+      <text class="axis" x="${L}" y="${H - 6}">${fmtDia(serie[0].dia)}</text>
+      <text class="axis" x="${L + meio * slot + slot / 2}" y="${H - 6}" text-anchor="middle">${fmtDia(serie[meio].dia)}</text>
+      <text class="axis" x="${W - R}" y="${H - 6}" text-anchor="end">hoje</text>
+    </svg>`;
+}
+
+/** Barras horizontais com rótulo e valor (proporção de um total). */
+function hbars(entradas) {
+  const total = entradas.reduce((s, [, v]) => s + v, 0) || 1;
+  const max = Math.max(1, ...entradas.map(([, v]) => v));
+  if (!entradas.length) return '<p class="hint">Nada registrado ainda.</p>';
+  return `<div class="bars">${entradas.map(([rotulo, v, ic]) => `
+    <div class="bar-row">
+      <div class="bar-top"><span class="meta-ico">${ic ? icon(ic, { size: 16 }) : ''}${esc(rotulo)}</span><span>${fmtN(v)} <small class="pct">${Math.round((v / total) * 100)}%</small></span></div>
+      <div class="bar"><i style="width:${Math.max(3, (v / max) * 100)}%"></i></div>
+    </div>`).join('')}</div>`;
+}
+
+function viewPainel() {
+  const head = `
+    <div class="top">
+      <div>
+        <a class="back" href="#/inicio">${icon('chevron-left', { size: 18 })}Início</a>
+        <h1>Painel de uso</h1>
+        <p class="sub">${painel.em ? `Atualizado às ${painel.em.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : 'Só você vê esta tela'}</p>
+      </div>
+      ${isAdmin ? `<button class="icon-btn ${painel.carregando ? 'spinning' : ''}" data-action="painel-atualizar" aria-label="Atualizar métricas">${icon('refresh-cw')}</button>` : ''}
+    </div>`;
+
+  if (!isAdmin) return head + `<div class="card">${emptyState('lock', 'Acesso restrito', 'Este painel é exclusivo da administração do Miaumigo.')}</div>`;
+  if (!painel.dados && !painel.carregando && !painel.erro) setTimeout(carregarPainel, 0);
+  if (!painel.dados) {
+    return head + (painel.erro
+      ? `<div class="card">${emptyState('cloud-off', 'Não consegui carregar', esc(painel.erro), '<button class="btn" data-action="painel-atualizar">Tentar de novo</button>')}</div>`
+      : '<div class="card"><p class="hint">Carregando métricas…</p></div>');
+  }
+
+  const d = painel.dados;
+  const u = d.usuarios, a = d.ativos, c = d.conteudo, s = d.armazenamento;
+  const serie = d.serie_30d || [];
+  const provedores = Object.entries(u.por_provedor || {}).map(([k, v]) => [k === 'google' ? 'Google' : k === 'email' ? 'E-mail e senha' : k, v, k === 'google' ? 'user' : 'mail']).sort((x, y) => y[1] - x[1]);
+  const especies = Object.entries(c.pets_por_especie || {}).map(([k, v]) => [SPECIES[k]?.label || k, v, SPECIES[k]?.icon || 'paw-print']).sort((x, y) => y[1] - x[1]);
+  const tipos = Object.entries(c.cuidados_por_tipo || {}).map(([k, v]) => [CARE_TYPES[k]?.label || k, v, CARE_TYPES[k]?.icon || 'clipboard-list']).sort((x, y) => y[1] - x[1]);
+  const mb = (s.bytes || 0) / 1048576;
+  const media = c.contas_com_pet ? (c.pets / c.contas_com_pet) : 0;
+
+  return head + `
+    <div class="stats">
+      <div class="card stat"><div class="num">${fmtN(u.total)}</div><div class="lbl">contas</div></div>
+      <div class="card stat"><div class="num">${fmtN(u.novos_7d)}</div><div class="lbl">novas em 7 dias</div></div>
+      <div class="card stat"><div class="num">${fmtN(a.d7)}</div><div class="lbl">ativas em 7 dias</div></div>
+    </div>
+
+    <section class="section">
+      <div class="section-head"><h2>Contas ativas por dia</h2></div>
+      <div class="card chart painel-chart">
+        <p class="chart-sub">Contas que registraram alguma alteração, últimos 30 dias</p>
+        ${serie.length ? dayBars(serie, 'ativos', ['conta ativa', 'contas ativas']) : '<p class="hint">Sem dados.</p>'}
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><h2>Novos cadastros por dia</h2></div>
+      <div class="card chart painel-chart">
+        ${serie.length ? dayBars(serie, 'cadastros', ['cadastro', 'cadastros']) : '<p class="hint">Sem dados.</p>'}
+        <details class="chart-table">
+          <summary>Ver os 30 dias em tabela</summary>
+          <table class="ctable"><thead><tr><th>Dia</th><th>Ativas</th><th>Cadastros</th></tr></thead>
+            <tbody>${[...serie].reverse().map((x) => `<tr><td>${fmtDia(x.dia)}</td><td>${fmtN(x.ativos)}</td><td>${fmtN(x.cadastros)}</td></tr>`).join('')}</tbody>
+          </table>
+        </details>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><h2>Engajamento</h2></div>
+      <div class="stats">
+        <div class="card stat"><div class="num">${fmtN(a.d1)}</div><div class="lbl">ativas hoje</div></div>
+        <div class="card stat"><div class="num">${fmtN(a.d30)}</div><div class="lbl">ativas em 30 dias</div></div>
+        <div class="card stat"><div class="num">${fmtN(a.login_7d)}</div><div class="lbl">entraram em 7 dias</div></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><h2>Como as pessoas entram</h2></div>
+      <div class="card">${hbars(provedores)}</div>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><h2>Conteúdo cadastrado</h2>${media ? `<span class="tag">${media.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} pets por conta</span>` : ''}</div>
+      <div class="stats">
+        <div class="card stat"><div class="num">${fmtN(c.pets)}</div><div class="lbl">pets</div></div>
+        <div class="card stat"><div class="num">${fmtN(c.cuidados)}</div><div class="lbl">cuidados</div></div>
+        <div class="card stat"><div class="num">${fmtN(c.gastos)}</div><div class="lbl">gastos</div></div>
+      </div>
+      <div class="stats" style="margin-top:10px">
+        <div class="card stat"><div class="num">${fmtN(c.pesos)}</div><div class="lbl">pesagens</div></div>
+        <div class="card stat"><div class="num">${fmtN(c.racoes)}</div><div class="lbl">pacotes de ração</div></div>
+        <div class="card stat"><div class="num">${fmtN(c.anexos)}</div><div class="lbl">anexos</div></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><h2>Pets por espécie</h2></div>
+      <div class="card">${hbars(especies)}</div>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><h2>Cuidados por tipo</h2></div>
+      <div class="card">${hbars(tipos)}</div>
+    </section>
+
+    <section class="section">
+      <div class="section-head"><h2>Armazenamento de anexos</h2></div>
+      <div class="stats" style="grid-template-columns:1fr 1fr">
+        <div class="card stat"><div class="num">${fmtN(s.arquivos)}</div><div class="lbl">arquivos</div></div>
+        <div class="card stat"><div class="num">${mb.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB</div><div class="lbl">de 1 GB grátis</div></div>
+      </div>
+    </section>
+
+    <p class="hint">Só números agregados: nenhum dado pessoal de usuários aparece aqui.</p>`;
+}
+
+/* dica ao passar o mouse/tocar nas barras dos gráficos */
+const chartTip = document.createElement('div');
+chartTip.className = 'chart-tip';
+chartTip.setAttribute('role', 'tooltip');
+document.body.appendChild(chartTip);
+document.addEventListener('pointerover', (e) => {
+  const g = e.target.closest('[data-tip]');
+  document.querySelectorAll('.bar-hit.hover').forEach((x) => x !== g && x.classList.remove('hover'));
+  if (!g) { chartTip.classList.remove('show'); return; }
+  g.classList.add('hover');
+  chartTip.textContent = g.dataset.tip;
+  const r = g.getBoundingClientRect();
+  chartTip.classList.add('show');
+  const w = chartTip.offsetWidth;
+  chartTip.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2))}px`;
+  chartTip.style.top = `${r.top - chartTip.offsetHeight - 8 + window.scrollY}px`;
+});
+window.addEventListener('scroll', () => chartTip.classList.remove('show'), { passive: true });
 
 /* ---------------- Tela de login ---------------- */
 
-const SKIP_KEY = 'miaumigo:semConta';
 const googleEnabled = () => syncConfigured && cfg.googleLogin === true;
 let authMode = 'entrar';   // entrar | criar | recuperar
 let authNotice = '';       // mensagem informativa no topo do formulário
@@ -372,8 +644,8 @@ function viewEntrar() {
         ${recuperar ? '<button type="button" class="link-btn auth-forgot" data-action="auth-mode" data-mode="entrar">Voltar para o login</button>' : ''}
       </div>
 
-      <button type="button" class="auth-skip" data-action="skip-login">Usar sem conta por enquanto</button>
-      <p class="auth-foot">Sem conta, seus dados ficam só neste aparelho. Dá para entrar depois em Configurações.</p>
+      <p class="auth-foot">É gratuito. Seus dados ficam guardados na sua conta e sincronizados entre aparelhos.<br>
+        <a href="privacidade.html">Política de Privacidade</a></p>
     </div>`;
 }
 
@@ -519,14 +791,14 @@ async function forgetSync() {
 }
 
 async function logout() {
-  if (!confirm('Sair da conta? Seus dados continuam neste aparelho, mas param de sincronizar.')) return;
+  if (!confirm('Sair da conta? Por segurança, os dados deste aparelho serão apagados. Eles continuam guardados na sua conta e voltam quando você entrar de novo.')) return;
   await syncNow(); // envia o que faltar antes de sair
-  await sb.auth.signOut();
-  meta = null;
-  localStorage.removeItem(SYNC_KEY);
-  localStorage.removeItem(SKIP_KEY);
+  if (await hasPendingChanges()) {
+    const ok = confirm('Algumas alterações ainda não foram enviadas para a nuvem (sem internet?). Se sair agora, elas serão perdidas. Sair mesmo assim?');
+    if (!ok) return;
+  }
   closeSheet();
-  toast('Você saiu da conta. Seus dados continuam neste aparelho.');
+  await sb.auth.signOut(); // o evento SIGNED_OUT apaga o aparelho e volta para o login
 }
 
 document.addEventListener('click', (e) => {
@@ -542,10 +814,23 @@ document.addEventListener('click', (e) => {
       document.querySelector('.auth-card input[name=email]')?.focus();
       break;
     case 'google-login': signInWithGoogle(el); break;
-    case 'skip-login':
-      try { localStorage.setItem(SKIP_KEY, '1'); } catch { /* ignore */ }
-      location.hash = '#/inicio';
+    case 'adopt-local':
+    case 'discard-local': {
+      const uid = el.dataset.uid;
+      if (uid !== remote.userId()) { closeSheet(); break; } // a conta mudou nesse meio-tempo
+      const go = async () => {
+        if (el.dataset.action === 'discard-local') await wipeLocal();
+        db.owner = uid;
+        persistLocal();
+        ownerPromptOpen = false;
+        closeSheet();
+        toast(el.dataset.action === 'discard-local' ? 'Dados do aparelho descartados' : 'Dados juntados à sua conta');
+        syncNow();
+      };
+      if (el.dataset.action === 'discard-local' && !confirm('Descartar os dados deste aparelho? Eles não estão em nenhuma conta e não poderão ser recuperados.')) break;
+      go();
       break;
+    }
     case 'toggle-pass': {
       const inp = el.parentElement.querySelector('input');
       const show = inp.type === 'password';
@@ -556,6 +841,8 @@ document.addEventListener('click', (e) => {
     }
     case 'sync-now': syncNow(); break;
     case 'logout': logout(); break;
+    case 'go-painel': closeSheet(); location.hash = '#/painel'; break;
+    case 'painel-atualizar': if (isAdmin && !painel.carregando) carregarPainel(); break;
   }
 });
 
@@ -574,15 +861,29 @@ if (syncConfigured) {
     setTimeout(() => {
       cleanAuthRedirect();
       if (event === 'INITIAL_SESSION') {
-        // primeira abertura sem conta: mostra a tela de login (a não ser que a pessoa tenha escolhido seguir sem conta)
-        let skipped = false;
-        try { skipped = !!localStorage.getItem(SKIP_KEY); } catch { /* ignore */ }
+        // o app só funciona com conta: sem sessão, vai para o login
+        try { localStorage.removeItem('miaumigo:semConta'); } catch { /* resto da versão antiga */ }
         const r = route().name;
-        if (!s && !skipped && ['inicio', ''].includes(r)) location.hash = '#/entrar';
+        if (!s && r !== 'entrar') location.hash = '#/entrar';
         if (s && r === 'entrar') location.hash = '#/inicio';
         splashReady('auth');
       }
+      if (s && (event === 'INITIAL_SESSION' || event === 'SIGNED_IN')) checkAdmin();
+      if (event === 'SIGNED_OUT') {
+        // saiu da conta: os dados do aparelho são apagados e o acesso fica bloqueado
+        isAdmin = false;
+        Object.assign(painel, { dados: null, erro: '', em: null });
+        ownerPromptOpen = false;
+        closeSheet();
+        wipeLocal();
+        authMode = 'entrar';
+        location.hash = '#/entrar';
+        if (wasLoggedIn) toast('Você saiu da conta.');
+      }
       if (event === 'PASSWORD_RECOVERY') authSheet('nova');
+      if (event === 'SIGNED_IN' && db.owner && db.owner !== s?.user?.id) {
+        wipeLocal(); // dados de outra conta: nem chegam a aparecer
+      }
       if (event === 'SIGNED_IN' && !wasLoggedIn) {
         authNotice = '';
         if (route().name === 'entrar') location.hash = '#/inicio';
