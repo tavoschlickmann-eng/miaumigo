@@ -1,6 +1,6 @@
 /* Service worker do Miaumigo: funciona offline e mostra notificações. */
-const CACHE = 'miaumigo-v3';
-const ASSETS = ['./', 'index.html', 'styles.css', 'icons.js', 'app.js', 'icon.svg', 'manifest.webmanifest'];
+const CACHE = 'miaumigo-v4';
+const ASSETS = ['./', 'index.html', 'styles.css', 'icons.js', 'config.js', 'vendor/supabase.js', 'app.js', 'sync.js', 'icon.svg', 'manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));

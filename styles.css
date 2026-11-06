@@ -510,3 +510,16 @@ a.banner { text-decoration: none; }
 .link-btn { background: none; border: 0; padding: 6px 8px; border-radius: 8px; color: var(--primary); font-weight: 800; font-size: 14px; }
 .link-btn:hover:not(:disabled) { background: var(--primary-soft); }
 .link-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+/* ---------- Conta e sincronização ---------- */
+.sync-badge.ok { color: var(--ok); }
+.sync-badge.err { color: var(--warn); }
+.sync-badge.off { color: var(--muted); }
+.sync-badge.spin .ico { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .sync-badge.spin .ico { animation: none; } }
+.account { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); }
+.account .row-sub { white-space: normal; }
+.form-error { margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--warn-soft); color: var(--warn); font-weight: 700; font-size: 14px; }
+.form-note { margin: 0; color: var(--muted); }
+.menu code { font-size: 13px; background: var(--surface-2); padding: 1px 6px; border-radius: 6px; }

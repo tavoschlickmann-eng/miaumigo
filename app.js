@@ -164,6 +164,7 @@ function save() {
   } catch (e) {
     toast('Não consegui salvar. O armazenamento pode estar cheio.');
   }
+  if (typeof scheduleSync === 'function') scheduleSync(); // sync.js
 }
 
 const getPet = (id) => db.pets.find((p) => p.id === id);
@@ -304,6 +305,7 @@ function viewHome() {
         <p class="sub">${greeting()}</p>
       </div>
       <div class="top-actions">
+        ${typeof syncBadge === 'function' ? syncBadge() : ''}
         <button class="icon-btn" data-action="settings" aria-label="Configurações">${icon('settings')}</button>
       </div>
     </header>`;
@@ -1648,6 +1650,7 @@ function settingsSheet() {
     : 'Desativados.';
   openSheet('Configurações', `
     <div class="menu form">
+      ${typeof accountSection === 'function' ? accountSection() : ''}
       <h3 class="menu-title">${icon('bell', { size: 18 })}Lembretes</h3>
       <label class="check-field"><input type="checkbox" data-reminder-toggle ${db.config.lembretes && perm === 'granted' ? 'checked' : ''} ${notifSupported() ? '' : 'disabled'}> Notificações neste aparelho</label>
       <label class="field"><span>Horário do aviso</span><input type="time" data-reminder-time value="${esc(db.config.horario)}"></label>
@@ -1728,7 +1731,8 @@ $('#import-file').addEventListener('change', async (e) => {
   try {
     const data = JSON.parse(await file.text());
     if (!Array.isArray(data.pets)) throw new Error('formato');
-    if (!confirm(`Importar ${data.pets.length} pet(s)? Os dados atuais serão substituídos.`)) return;
+    const cloud = typeof isLoggedIn === 'function' && isLoggedIn() ? ' Como você está conectado, a nuvem também será substituída.' : '';
+    if (!confirm(`Importar ${data.pets.length} pet(s)? Os dados atuais serão substituídos.${cloud}`)) return;
     db = normalize({ pets: data.pets, cuidados: data.cuidados || [], pesos: data.pesos || [], gastos: data.gastos || [], racoes: data.racoes || [], config: data.config });
     save(); closeSheet(); render();
     if (Array.isArray(data.anexos)) {
@@ -1874,7 +1878,14 @@ document.addEventListener('click', (e) => {
     case 'import': $('#import-file').click(); break;
     case 'demo': loadDemo(); break;
     case 'reset':
-      if (!confirm('Apagar TODOS os dados do Miaumigo? Isso não pode ser desfeito. Exporte um backup antes, se quiser.')) return;
+      {
+        const online = typeof isLoggedIn === 'function' && isLoggedIn();
+        const msg = online
+          ? 'Apagar os dados DESTE APARELHO e sair da conta? Seus dados na nuvem continuam guardados e voltam quando você entrar de novo.'
+          : 'Apagar TODOS os dados do Miaumigo? Isso não pode ser desfeito. Exporte um backup antes, se quiser.';
+        if (!confirm(msg)) return;
+        if (typeof forgetSync === 'function') forgetSync(); // não propaga a exclusão para a nuvem
+      }
       IDB.clear().catch(() => {});
       db = emptyDB(); save(); closeSheet(); location.hash = '#/inicio'; render();
       toast('Tudo apagado');

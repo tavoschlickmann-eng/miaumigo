@@ -27,6 +27,17 @@ Depois abra http://localhost:5173.
 - **Instalável (PWA)**: funciona offline e pode ser adicionado à tela inicial do celular.
 - **Backup**: exportar e importar em JSON, incluindo os anexos (engrenagem na tela inicial). Tema claro, escuro ou automático.
 
+## Conta e sincronização (Supabase)
+
+Opcional: sem conta, tudo funciona só no aparelho. Com conta, os dados viram uma cópia sincronizada na nuvem.
+
+- **Configurar**: siga [`supabase/CONFIGURAR.md`](supabase/CONFIGURAR.md) (criar projeto, rodar [`schema.sql`](supabase/schema.sql), ajustar o login) e preencha `config.js` com a URL e a chave publicável.
+- **Como funciona**: offline primeiro. Sincroniza ao abrir o app, ~2,5 s depois de cada alteração, ao voltar para o app, ao reconectar e a cada minuto. Baixa o que mudou na nuvem, envia o que mudou no aparelho (inclusive exclusões) e sincroniza os anexos no Storage.
+- **Conflito**: se o mesmo registro mudar nos dois lados, vale o do aparelho que está sincronizando.
+- **Segurança**: regras de acesso (RLS) no banco e no Storage; cada pessoa só vê os próprios dados. A chave no app é a publicável (pública); a secret/service_role nunca vai para o app.
+- **Apagar todos os dados** com a conta conectada apaga só o aparelho e sai da conta; a nuvem fica intacta.
+- Biblioteca: `@supabase/supabase-js` 2.118.0, embutida em `vendor/` para o app abrir offline.
+
 ## Ícones
 
 [Lucide](https://lucide.dev) v1.69.0 (licença ISC), estilo outline. Os SVGs usados ficam embutidos em `icons.js`, então o app não depende de CDN. Para adicionar um ícone, pegue o conteúdo do SVG em `https://unpkg.com/lucide-static@1.69.0/icons/<nome>.svg` e inclua no objeto `ICONS`.
@@ -36,6 +47,10 @@ Depois abra http://localhost:5173.
 - `index.html`: estrutura e navegação
 - `styles.css`: visual (mobile first, modo escuro)
 - `app.js`: dados, telas, formulários e lembretes
+- `sync.js`: login, conta e sincronização com o Supabase
+- `config.js`: URL e chave publicável do Supabase
+- `supabase/`: SQL do banco e guia de configuração
+- `vendor/supabase.js`: cliente do Supabase
 - `icons.js`: ícones Lucide embutidos
 - `sw.js`, `manifest.webmanifest`, `icon.svg`: PWA (offline, instalação e notificações)
 - `serve.ps1`: servidor local em PowerShell
