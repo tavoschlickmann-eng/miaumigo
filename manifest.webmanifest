@@ -1,0 +1,14 @@
+{
+  "name": "Miaumigo",
+  "short_name": "Miaumigo",
+  "description": "Saúde, agenda e gastos dos seus pets.",
+  "lang": "pt-BR",
+  "start_url": "./#/inicio",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#FBF7F2",
+  "theme_color": "#E8663D",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

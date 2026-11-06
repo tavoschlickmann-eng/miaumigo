@@ -1,0 +1,11 @@
+# Sistema
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Configurações locais do Claude Code
+.claude/settings.local.json
+
+# Backups exportados pelo app (contêm dados pessoais dos pets)
+miaumigo-backup-*.json
+*.ics
