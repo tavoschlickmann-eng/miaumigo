@@ -235,11 +235,32 @@ function route() {
   return { name: parts[0] || 'inicio', id: parts[1] };
 }
 
+/* ---------------- Splash ----------------
+   Some quando o app desenhou ('app') e o login foi verificado ('auth', avisado
+   pelo sync.js). Fica no mínimo ~1 s para a animação terminar e no máximo 4 s. */
+const splashWait = new Set(['app', 'auth']);
+function splashReady(part) {
+  if (part) splashWait.delete(part);
+  if (splashWait.size) return;
+  const el = document.getElementById('splash');
+  if (!el || el.classList.contains('out')) return;
+  const min = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1100;
+  setTimeout(() => {
+    el.classList.add('out');
+    setTimeout(() => el.remove(), 500);
+  }, Math.max(0, min - performance.now()));
+}
+setTimeout(() => { splashWait.clear(); splashReady(); }, 4000);
+
 function render() {
   const r = route();
-  const views = { inicio: viewHome, pets: viewPets, pet: viewPet, carteira: viewCarteira, agenda: viewAgenda, gastos: viewGastos };
+  const views = {
+    inicio: viewHome, pets: viewPets, pet: viewPet, carteira: viewCarteira, agenda: viewAgenda, gastos: viewGastos,
+    entrar: (id) => (typeof viewEntrar === 'function' ? viewEntrar(id) : viewHome()), // tela de login (sync.js)
+  };
   const view = views[r.name] || viewHome;
   app.innerHTML = view(r.id);
+  document.body.classList.toggle('no-tabbar', r.name === 'entrar' && typeof viewEntrar === 'function');
 
   const activeTab = ['pet', 'carteira'].includes(r.name) ? 'pets' : (views[r.name] ? r.name : 'inicio');
   document.querySelectorAll('.tabbar a').forEach((a) => {
@@ -1924,6 +1945,7 @@ setInterval(checkReminders, 60 * 1000);
 
 render();
 checkReminders();
+splashReady('app');
 
 // limpa anexos órfãos (ex.: app fechado com um cuidado novo ainda em rascunho)
 IDB.all().then((all) => {

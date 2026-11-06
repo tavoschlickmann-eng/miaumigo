@@ -297,7 +297,7 @@ function accountSection() {
     return `
       <h3 class="menu-title">${icon('cloud', { size: 18 })}Conta e sincronização</h3>
       <p>Entre para guardar seus dados na nuvem e usar em outros aparelhos. O que já está aqui vai junto.</p>
-      <button class="btn" data-action="auth" data-mode="entrar">${icon('log-in', { size: 18 })}Entrar ou criar conta</button>`;
+      <button class="btn" data-action="go-login">${icon('log-in', { size: 18 })}Entrar ou criar conta</button>`;
   }
   return `
     <h3 class="menu-title">${icon('cloud', { size: 18 })}Conta e sincronização</h3>
@@ -309,6 +309,107 @@ function accountSection() {
       <button class="btn plain" data-action="sync-now">${icon('refresh-cw', { size: 18 })}Sincronizar</button>
       <button class="btn plain" data-action="logout">${icon('log-out', { size: 18 })}Sair</button>
     </div>`;
+}
+
+/* ---------------- Tela de login ---------------- */
+
+const SKIP_KEY = 'miaumigo:semConta';
+const googleEnabled = () => syncConfigured && cfg.googleLogin === true;
+let authMode = 'entrar';   // entrar | criar | recuperar
+let authNotice = '';       // mensagem informativa no topo do formulário
+
+// Logo oficial do Google (exigido pelas diretrizes do botão "Fazer login com o Google")
+const GOOGLE_G = `<svg class="g-logo" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>`;
+
+function viewEntrar() {
+  if (!syncConfigured) { setTimeout(() => { location.hash = '#/inicio'; }, 0); return ''; }
+  if (isLoggedIn()) { setTimeout(() => { location.hash = '#/inicio'; }, 0); return ''; }
+
+  const titles = { entrar: 'Que bom te ver!', criar: 'Crie sua conta', recuperar: 'Recuperar senha' };
+  const subs = {
+    entrar: 'Entre para guardar seus pets na nuvem e usar em qualquer aparelho.',
+    criar: 'Seus dados ficam salvos com segurança e sincronizados entre aparelhos.',
+    recuperar: 'Informe seu e-mail e enviamos um link para criar uma senha nova.',
+  };
+  const recuperar = authMode === 'recuperar';
+  return `
+    <div class="auth-screen">
+      <div class="auth-hero">
+        <div class="auth-logo">${icon('paw-print', { size: 40 })}</div>
+        <h1>Miaumigo</h1>
+      </div>
+
+      <div class="auth-card card">
+        <h2>${titles[authMode]}</h2>
+        <p class="auth-sub">${subs[authMode]}</p>
+        ${authNotice ? `<p class="auth-notice" role="status">${icon('mail', { size: 18 })}<span>${esc(authNotice)}</span></p>` : ''}
+
+        ${!recuperar && googleEnabled() ? `
+          <button type="button" class="btn-google" data-action="google-login">${GOOGLE_G}<span>Continuar com o Google</span></button>
+          <div class="auth-divider"><span>ou com e-mail</span></div>` : ''}
+
+        ${!recuperar ? `
+          <div class="seg" role="group" aria-label="Entrar ou criar conta">
+            <button type="button" data-action="auth-mode" data-mode="entrar" aria-pressed="${authMode === 'entrar'}">Entrar</button>
+            <button type="button" data-action="auth-mode" data-mode="criar" aria-pressed="${authMode === 'criar'}">Criar conta</button>
+          </div>` : ''}
+
+        <form class="form" data-auth="${authMode}" autocomplete="on">
+          <label class="field"><span>E-mail</span>
+            <span class="input-ico">${icon('mail', { size: 18 })}<input type="email" name="email" required autocomplete="email" inputmode="email" placeholder="voce@exemplo.com"></span>
+          </label>
+          ${!recuperar ? `
+          <label class="field"><span>Senha</span>
+            <span class="input-ico">${icon('lock', { size: 18 })}<input type="password" name="senha" required minlength="6" autocomplete="${authMode === 'entrar' ? 'current-password' : 'new-password'}" placeholder="${authMode === 'criar' ? 'Mínimo de 6 caracteres' : 'Sua senha'}">
+              <button type="button" class="pass-toggle" data-action="toggle-pass" aria-label="Mostrar senha">${icon('eye', { size: 18 })}</button>
+            </span>
+          </label>` : ''}
+          <p class="form-error" id="auth-error" role="alert" hidden></p>
+          <button class="btn block" type="submit">${{ entrar: 'Entrar', criar: 'Criar conta', recuperar: 'Enviar link' }[authMode]}</button>
+        </form>
+
+        ${authMode === 'entrar' ? '<button type="button" class="link-btn auth-forgot" data-action="auth-mode" data-mode="recuperar">Esqueci minha senha</button>' : ''}
+        ${recuperar ? '<button type="button" class="link-btn auth-forgot" data-action="auth-mode" data-mode="entrar">Voltar para o login</button>' : ''}
+      </div>
+
+      <button type="button" class="auth-skip" data-action="skip-login">Usar sem conta por enquanto</button>
+      <p class="auth-foot">Sem conta, seus dados ficam só neste aparelho. Dá para entrar depois em Configurações.</p>
+    </div>`;
+}
+
+function goLogin(mode = 'entrar') {
+  authMode = mode;
+  authNotice = '';
+  closeSheet();
+  if (route().name === 'entrar') render();
+  else location.hash = '#/entrar';
+}
+
+async function signInWithGoogle(btn) {
+  btn.disabled = true;
+  btn.classList.add('loading');
+  const { error } = await sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: location.origin + location.pathname, queryParams: { prompt: 'select_account' } },
+  });
+  if (error) { // em caso de sucesso o navegador já saiu da página
+    btn.disabled = false;
+    btn.classList.remove('loading');
+    const err = document.getElementById('auth-error');
+    if (err) { err.textContent = authError(error); err.hidden = false; }
+  }
+}
+
+/** Retorno do Google: o Supabase troca o ?code= pela sessão; aqui só limpamos a URL e tratamos erros. */
+function cleanAuthRedirect() {
+  const p = new URLSearchParams(location.search);
+  if (!p.has('code') && !p.has('error') && !p.has('error_description')) return;
+  const desc = p.get('error_description');
+  history.replaceState(null, '', location.pathname + (location.hash || '#/inicio'));
+  if (desc) {
+    authNotice = '';
+    setTimeout(() => toast(/access_denied|cancel/i.test(p.get('error') || '') ? 'Login com o Google cancelado.' : `Não consegui entrar com o Google: ${desc}`), 300);
+  }
 }
 
 /* ---------------- Login ---------------- */
@@ -366,18 +467,26 @@ async function handleAuthSubmit(form) {
     if (mode === 'entrar') {
       const { error } = await sb.auth.signInWithPassword({ email, password: senha });
       if (error) throw error;
-      closeSheet();
-      toast('Bem-vindo! Sincronizando seus dados…');
+      closeSheet(); // a mensagem de boas-vindas vem do evento SIGNED_IN
     } else if (mode === 'criar') {
       const { data, error } = await sb.auth.signUp({ email, password: senha, options: { emailRedirectTo: redirectTo } });
       if (error) throw error;
       closeSheet();
-      toast(data.session ? 'Conta criada! Sincronizando…' : 'Conta criada! Confirme pelo link que enviamos por e-mail.');
+      if (data.session) toast('Conta criada! Sincronizando…');
+      else if (form.closest('.auth-screen')) {
+        authMode = 'entrar';
+        authNotice = `Enviamos um link de confirmação para ${email}. Confirme e depois entre aqui.`;
+        render();
+      } else toast('Conta criada! Confirme pelo link que enviamos por e-mail.');
     } else if (mode === 'recuperar') {
       const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
       if (error) throw error;
       closeSheet();
-      toast('Se o e-mail tiver conta, o link chega em instantes.');
+      if (form.closest('.auth-screen')) {
+        authMode = 'entrar';
+        authNotice = `Se houver conta com ${email}, o link para criar uma senha nova chega em instantes.`;
+        render();
+      } else toast('Se o e-mail tiver conta, o link chega em instantes.');
     } else if (mode === 'nova') {
       const { error } = await sb.auth.updateUser({ password: senha });
       if (error) throw error;
@@ -392,8 +501,8 @@ async function handleAuthSubmit(form) {
   }
 }
 
-// o formulário de login não usa o onSubmit genérico das folhas
-sheet.addEventListener('submit', (e) => {
+// o formulário de login (na tela ou numa folha) não usa o onSubmit genérico das folhas
+document.addEventListener('submit', (e) => {
   const form = e.target.closest('form[data-auth]');
   if (!form) return;
   e.preventDefault();
@@ -415,8 +524,9 @@ async function logout() {
   await sb.auth.signOut();
   meta = null;
   localStorage.removeItem(SYNC_KEY);
+  localStorage.removeItem(SKIP_KEY);
   closeSheet();
-  toast('Você saiu da conta');
+  toast('Você saiu da conta. Seus dados continuam neste aparelho.');
 }
 
 document.addEventListener('click', (e) => {
@@ -424,6 +534,26 @@ document.addEventListener('click', (e) => {
   if (!el) return;
   switch (el.dataset.action) {
     case 'auth': if (sb) authSheet(el.dataset.mode); break;
+    case 'go-login': if (sb) goLogin(); break;
+    case 'auth-mode':
+      authMode = el.dataset.mode;
+      authNotice = '';
+      render();
+      document.querySelector('.auth-card input[name=email]')?.focus();
+      break;
+    case 'google-login': signInWithGoogle(el); break;
+    case 'skip-login':
+      try { localStorage.setItem(SKIP_KEY, '1'); } catch { /* ignore */ }
+      location.hash = '#/inicio';
+      break;
+    case 'toggle-pass': {
+      const inp = el.parentElement.querySelector('input');
+      const show = inp.type === 'password';
+      inp.type = show ? 'text' : 'password';
+      el.innerHTML = icon(show ? 'eye-off' : 'eye', { size: 18 });
+      el.setAttribute('aria-label', show ? 'Esconder senha' : 'Mostrar senha');
+      break;
+    }
     case 'sync-now': syncNow(); break;
     case 'logout': logout(); break;
   }
@@ -438,16 +568,34 @@ if (syncConfigured) {
   });
 
   sb.auth.onAuthStateChange((event, s) => {
+    const wasLoggedIn = !!session;
     session = s;
     // não chamar o Supabase direto dentro deste callback (recomendação da biblioteca)
     setTimeout(() => {
+      cleanAuthRedirect();
+      if (event === 'INITIAL_SESSION') {
+        // primeira abertura sem conta: mostra a tela de login (a não ser que a pessoa tenha escolhido seguir sem conta)
+        let skipped = false;
+        try { skipped = !!localStorage.getItem(SKIP_KEY); } catch { /* ignore */ }
+        const r = route().name;
+        if (!s && !skipped && ['inicio', ''].includes(r)) location.hash = '#/entrar';
+        if (s && r === 'entrar') location.hash = '#/inicio';
+        splashReady('auth');
+      }
       if (event === 'PASSWORD_RECOVERY') authSheet('nova');
+      if (event === 'SIGNED_IN' && !wasLoggedIn) {
+        authNotice = '';
+        if (route().name === 'entrar') location.hash = '#/inicio';
+        toast(`Olá${s?.user?.user_metadata?.name ? `, ${s.user.user_metadata.name.split(' ')[0]}` : ''}! Sincronizando seus dados…`);
+      }
       if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') syncNow();
       updateSyncUI();
-      if (document.getElementById('sheet').open && document.querySelector('.menu .account, .menu [data-action="auth"]')) settingsSheet();
+      if (document.getElementById('sheet').open && document.querySelector('.menu .account, .menu [data-action="go-login"]')) settingsSheet();
       render();
     }, 0);
   });
+} else {
+  splashReady('auth'); // sem login configurado: nada a esperar
 }
 
 window.addEventListener('online', () => syncNow());

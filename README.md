@@ -27,6 +27,13 @@ Depois abra http://localhost:5173.
 - **Instalável (PWA)**: funciona offline e pode ser adicionado à tela inicial do celular.
 - **Backup**: exportar e importar em JSON, incluindo os anexos (engrenagem na tela inicial). Tema claro, escuro ou automático.
 
+## Abertura e login
+
+- **Splash screen** animada na cor do app; some quando o app carregou e o login foi verificado (mín. ~1 s, máx. 4 s). Ícones PNG (192, 512, maskable e Apple) em `icons/` para a abertura nativa do Android emendar na animação.
+- **Tela de login** na primeira abertura: Continuar com o Google, e-mail e senha (entrar, criar conta, recuperar senha) ou "Usar sem conta" (lembrado no aparelho).
+- **Login com Google**: projeto `Miaumigo` no Google Cloud (conta pessoal), tela de consentimento em produção, escopos só de e-mail e perfil. Ligado por `googleLogin: true` em `config.js`. Se o e-mail do Google já tiver conta, o Supabase une as duas.
+- **Política de privacidade** pública em `privacidade.html` (exigida pelo Google).
+
 ## Conta e sincronização (Supabase)
 
 Opcional: sem conta, tudo funciona só no aparelho. Com conta, os dados viram uma cópia sincronizada na nuvem.

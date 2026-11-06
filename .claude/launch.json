@@ -6,6 +6,12 @@
       "runtimeExecutable": "powershell",
       "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "serve.ps1", "-Port", "5173"],
       "port": 5173
+    },
+    {
+      "name": "miaumigo-limpo",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "serve.ps1", "-Port", "5174"],
+      "port": 5174
     }
   ]
 }

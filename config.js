@@ -5,4 +5,6 @@
 window.MIAUMIGO_CONFIG = {
   supabaseUrl: 'https://kmfjldbkkipsvgpkdrfi.supabase.co',
   supabaseKey: 'sb_publishable_1NEl8teWECwIOGE8RCx1lA_xl0TyABF',
+  // Login com Google: ligue depois de configurar o provedor no Supabase (ver supabase/CONFIGURAR.md)
+  googleLogin: true,
 };

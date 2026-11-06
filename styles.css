@@ -523,3 +523,60 @@ a.banner { text-decoration: none; }
 .form-error { margin: 0; padding: 10px 12px; border-radius: 12px; background: var(--warn-soft); color: var(--warn); font-weight: 700; font-size: 14px; }
 .form-note { margin: 0; color: var(--muted); }
 .menu code { font-size: 13px; background: var(--surface-2); padding: 1px 6px; border-radius: 6px; }
+
+/* ---------- Tela de login ---------- */
+body.no-tabbar .tabbar { display: none; }
+body.no-tabbar .app { padding-bottom: 32px; }
+.auth-screen {
+  min-height: calc(100vh - 48px);
+  display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 18px;
+  padding: 8px 0 env(safe-area-inset-bottom);
+  max-width: 420px; margin: 0 auto;
+}
+.auth-hero { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.auth-logo {
+  width: 84px; height: 84px; border-radius: 26px;
+  display: grid; place-items: center;
+  background: var(--primary); color: #fff;
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--primary) 40%, transparent);
+}
+.auth-hero h1 { margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -.02em; }
+.auth-card { padding: 22px 18px; display: flex; flex-direction: column; gap: 14px; }
+.auth-card h2 { margin: 0; font-size: 22px; font-weight: 800; text-align: center; }
+.auth-sub { margin: -6px 0 2px; color: var(--muted); text-align: center; font-size: 15px; }
+.auth-card .seg { margin: 0; }
+.auth-notice { display: flex; gap: 10px; align-items: flex-start; margin: 0; padding: 12px; border-radius: 12px; background: var(--ok-soft); color: var(--ink); font-size: 14px; font-weight: 600; }
+.auth-notice .ico { color: var(--ok); margin-top: 1px; }
+.auth-forgot { align-self: center; }
+.auth-skip { align-self: center; background: none; border: 0; color: var(--ink); font-weight: 800; padding: 10px 14px; border-radius: 12px; }
+.auth-skip:hover { background: var(--surface-2); }
+.auth-foot { margin: -10px 0 0; text-align: center; color: var(--muted); font-size: 13px; }
+
+.btn-google {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  width: 100%; min-height: 48px; padding: 10px 16px;
+  border-radius: 14px; border: 1px solid #747775;
+  background: #fff; color: #1f1f1f;
+  font: 600 15px/1 "Nunito", system-ui, sans-serif;
+  transition: background .15s, box-shadow .15s;
+}
+.btn-google:hover { background: #f8f8f8; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.btn-google:focus-visible { outline: 3px solid var(--primary-soft); outline-offset: 2px; }
+.btn-google .g-logo { width: 20px; height: 20px; flex: none; }
+.btn-google.loading { opacity: .7; cursor: progress; }
+:root[data-theme="dark"] .btn-google { background: #131314; color: #e3e3e3; border-color: #8e918f; }
+:root[data-theme="dark"] .btn-google:hover { background: #1f1f20; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .btn-google { background: #131314; color: #e3e3e3; border-color: #8e918f; }
+  :root:not([data-theme="light"]) .btn-google:hover { background: #1f1f20; }
+}
+
+.auth-divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 13px; font-weight: 700; }
+.auth-divider::before, .auth-divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+.input-ico { position: relative; display: block; }
+.input-ico > .ico { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.form .input-ico input:not([type="checkbox"]):not([type="file"]) { padding-left: 42px; }
+.form .input-ico input[name="senha"]:not([type="checkbox"]):not([type="file"]) { padding-right: 46px; }
+.pass-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); display: grid; place-items: center; }
+.pass-toggle:hover { background: var(--surface-2); color: var(--ink); }

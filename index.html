@@ -7,13 +7,71 @@
   <meta name="description" content="Cuide da saúde, agenda e gastos dos seus pets em um só lugar.">
   <meta name="theme-color" content="#E8663D">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Miaumigo">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <style>
+    /* Splash: estilo embutido para aparecer já no primeiro quadro */
+    .splash {
+      position: fixed; inset: 0; z-index: 100;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+      background: #E8663D; color: #fff;
+      font-family: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+      transition: opacity .35s ease, transform .35s ease, visibility 0s linear .35s;
+    }
+    .splash.out { opacity: 0; transform: scale(1.04); visibility: hidden; pointer-events: none; }
+    .splash-logo {
+      width: 112px; height: 112px; border-radius: 32px;
+      display: grid; place-items: center;
+      background: rgba(255,255,255,.14);
+      animation: splash-pop .6s cubic-bezier(.2,1.4,.4,1) both;
+    }
+    .splash-logo svg { width: 64px; height: 64px; }
+    .splash-logo .draw { stroke-dasharray: 60; stroke-dashoffset: 60; animation: splash-draw .7s .15s ease-out forwards; }
+    .splash-logo .toe { transform-box: fill-box; transform-origin: center; animation: splash-toe .4s cubic-bezier(.2,1.6,.4,1) both; }
+    .splash-logo .toe:nth-of-type(1) { animation-delay: .35s; }
+    .splash-logo .toe:nth-of-type(2) { animation-delay: .45s; }
+    .splash-logo .toe:nth-of-type(3) { animation-delay: .55s; }
+    .splash-name { font-size: 34px; font-weight: 800; letter-spacing: -.02em; animation: splash-up .5s .25s ease-out both; }
+    .splash-tag { font-size: 15px; font-weight: 600; opacity: .85; animation: splash-up .5s .35s ease-out both; }
+    .splash-dots { position: absolute; bottom: calc(48px + env(safe-area-inset-bottom)); display: flex; gap: 8px; }
+    .splash-dots i { width: 8px; height: 8px; border-radius: 50%; background: #fff; opacity: .35; animation: splash-dot 1s infinite ease-in-out; }
+    .splash-dots i:nth-child(2) { animation-delay: .15s; }
+    .splash-dots i:nth-child(3) { animation-delay: .3s; }
+    @keyframes splash-pop { from { transform: scale(.5); opacity: 0; } }
+    @keyframes splash-draw { to { stroke-dashoffset: 0; } }
+    @keyframes splash-toe { from { transform: scale(0); } }
+    @keyframes splash-up { from { transform: translateY(10px); opacity: 0; } }
+    @keyframes splash-dot { 50% { opacity: 1; transform: translateY(-4px); } }
+    @media (prefers-reduced-motion: reduce) {
+      .splash *, .splash { animation: none !important; transition: opacity .2s !important; }
+      .splash-logo .draw { stroke-dashoffset: 0; }
+    }
+  </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <div id="splash" class="splash" role="status" aria-label="Carregando o Miaumigo">
+    <div class="splash-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle class="toe" cx="11" cy="4" r="2"/>
+        <circle class="toe" cx="18" cy="8" r="2"/>
+        <circle class="toe" cx="20" cy="16" r="2"/>
+        <path class="draw" d="M9 10a5 5 0 0 1 5 5v3.5a3.5 3.5 0 0 1-6.84 1.045Q6.52 17.48 4.46 16.84A3.5 3.5 0 0 1 5.5 10Z"/>
+      </svg>
+    </div>
+    <div class="splash-name">Miaumigo</div>
+    <div class="splash-tag">Cuidar bem, sem esquecer nada</div>
+    <div class="splash-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+  </div>
+
   <main id="app" class="app"></main>
 
   <nav class="tabbar" aria-label="Navegação principal">
