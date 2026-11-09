@@ -1,9 +1,14 @@
-/* Service worker do Miaumigo: funciona offline e mostra notificações. */
-const CACHE = 'miaumigo-v8';
+/* Service worker do Miaumigo: funciona offline, atualiza rápido e mostra notificações. */
+const CACHE = 'miaumigo-v9';
 const ASSETS = ['./', 'index.html', 'styles.css', 'icons.js', 'config.js', 'vendor/supabase.js', 'app.js', 'sync.js', 'install.js', 'icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png', 'manifest.webmanifest', 'privacidade.html'];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  // cache: 'reload' = baixa do servidor, ignorando o cache do navegador
+  e.waitUntil(
+    caches.open(CACHE)
+      .then((c) => c.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (e) => {
@@ -14,15 +19,19 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// Rede primeiro (sempre a versão mais nova); cache quando estiver offline.
+// Rede primeiro, SEMPRE conferindo com o servidor (cache: 'no-cache'): o GitHub Pages
+// manda guardar os arquivos por 10 minutos, o que atrasava as atualizações.
+// Se o arquivo não mudou, o servidor responde "304" na hora; sem internet, usa o cache.
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
   e.respondWith(
-    fetch(req)
+    fetch(req, { cache: 'no-cache' })
       .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(req, copy));
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy));
+        }
         return res;
       })
       .catch(() => caches.match(req, { ignoreSearch: true }).then((r) => r || caches.match('index.html')))

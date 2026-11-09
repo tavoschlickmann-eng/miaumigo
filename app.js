@@ -1672,7 +1672,7 @@ function exportICS(cares, name) {
 }
 
 /* ---- Menu de perfil ("Minha conta") e Configurações ---- */
-const APP_VERSION = '1.4.1';
+const APP_VERSION = '1.4.2';
 const SUPORTE_EMAIL = 'tavoschlickmann@gmail.com';
 
 const contaAtual = () => (typeof session !== 'undefined' && session?.user) || null;
@@ -2002,7 +2002,27 @@ window.addEventListener('hashchange', () => {
 });
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-  navigator.serviceWorker.register('sw.js').catch(() => { /* sem SW: notificações simples */ });
+  // updateViaCache 'none': o navegador sempre confere o sw.js no servidor
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
+    const procurarAtualizacao = () => reg.update().catch(() => {});
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) procurarAtualizacao(); });
+    setInterval(procurarAtualizacao, 30 * 60 * 1000);
+  }).catch(() => { /* sem SW: notificações simples */ });
+
+  // Versão nova assumiu: recarrega sozinho (esperando fechar um formulário aberto, para não perder nada)
+  let tinhaVersao = !!navigator.serviceWorker.controller;
+  let recarregando = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!tinhaVersao) { tinhaVersao = true; return; } // primeira instalação: nada a recarregar
+    if (recarregando) return;
+    const recarregar = () => { recarregando = true; location.reload(); };
+    if (sheet.open) {
+      sheet.addEventListener('close', recarregar, { once: true });
+      toast('Nova versão do Miaumigo pronta: ela entra quando você fechar esta janela.');
+    } else {
+      recarregar();
+    }
+  });
 }
 
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { render(); checkReminders(); } });
