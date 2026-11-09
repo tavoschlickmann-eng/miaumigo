@@ -1672,7 +1672,7 @@ function exportICS(cares, name) {
 }
 
 /* ---- Menu de perfil ("Minha conta") e Configurações ---- */
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.4.1';
 const SUPORTE_EMAIL = 'tavoschlickmann@gmail.com';
 
 const contaAtual = () => (typeof session !== 'undefined' && session?.user) || null;
@@ -1726,70 +1726,55 @@ function profileMenu() {
 }
 const settingsSheet = profileMenu; // nome antigo, usado pelo sync.js
 
+/** Configurações: uma tela só, com as seções em sequência. */
 function configMenu() {
-  const lembretesOn = db.config.lembretes && notifSupported() && Notification.permission === 'granted';
-  const tema = { auto: 'automático', light: 'claro', dark: 'escuro' }[document.documentElement.dataset.theme || 'auto'];
-  openSheet('Configurações', `
-    <div class="menu">
-      <nav class="menu-list">
-        ${menuRow('cfg-lembretes', 'bell', 'Lembretes', lembretesOn ? `Ativados · aviso às ${db.config.horario}` : 'Desativados')}
-        ${menuRow('cfg-aparencia', 'palette', 'Aparência', `Tema ${tema}`)}
-        ${menuRow('cfg-calendario', 'calendar-plus', 'Calendário', 'Enviar a agenda para o celular')}
-        ${menuRow('cfg-conta', 'user', 'Conta', contaAtual()?.email || '')}
-      </nav>
-    </div>`, null, { back: profileMenu });
-}
-
-function remindersSheet() {
   const perm = notifSupported() ? Notification.permission : 'unsupported';
+  const lembretesOn = db.config.lembretes && perm === 'granted';
   const status = !notifSupported() ? 'Este navegador não suporta notificações. Use o calendário para receber os avisos.'
     : perm === 'denied' ? 'Notificações bloqueadas no navegador. Libere nas permissões do site.'
-    : db.config.lembretes ? 'Você é avisado quando abre o app ou quando ele está aberto em segundo plano.'
+    : lembretesOn ? 'Você é avisado quando abre o app ou quando ele está aberto em segundo plano.'
     : 'Ative para ser avisado antes de vacinas, remédios e quando a ração estiver acabando.';
-  openSheet('Lembretes', `
-    <div class="menu form">
-      <label class="check-field"><input type="checkbox" data-reminder-toggle ${db.config.lembretes && perm === 'granted' ? 'checked' : ''} ${notifSupported() ? '' : 'disabled'}> Notificações neste aparelho</label>
-      <label class="field"><span>Horário do aviso</span><input type="time" data-reminder-time value="${esc(db.config.horario)}"></label>
-      <p>${status}</p>
-      ${db.config.lembretes && perm === 'granted' ? `<button class="btn plain" data-action="test-notification">${icon('bell-ring', { size: 18 })}Testar notificação</button>` : ''}
-    </div>`, null, { back: configMenu });
-}
-
-function aparenciaSheet() {
   const theme = document.documentElement.dataset.theme || 'auto';
-  openSheet('Aparência', `
-    <div class="menu form">
-      <label class="field"><span>Tema</span>
-        <select data-theme-select>
-          <option value="auto" ${theme === 'auto' ? 'selected' : ''}>Automático (igual ao celular)</option>
-          <option value="light" ${theme === 'light' ? 'selected' : ''}>Claro</option>
-          <option value="dark" ${theme === 'dark' ? 'selected' : ''}>Escuro</option>
-        </select>
-      </label>
-    </div>`, null, { back: configMenu });
-}
-
-function calendarioSheet() {
-  openSheet('Calendário', `
-    <div class="menu">
-      <p>Envie os cuidados pendentes para o calendário do celular (Google Agenda, Apple, Outlook). Os alertas vão junto, então você é avisado <b>mesmo com o app fechado</b>.</p>
-      <button class="btn" data-action="export-ics">${icon('calendar-plus', { size: 18 })}Enviar agenda para o calendário</button>
-    </div>`, null, { back: configMenu });
-}
-
-function contaSheet() {
   const u = contaAtual();
   const provs = (u?.app_metadata?.providers || []).map((p) => ({ google: 'Google', email: 'E-mail e senha' }[p] || p)).join(' e ');
-  openSheet('Conta', `
-    <div class="menu">
-      <div class="info card"><dl style="margin:0">
-        <div><dt>E-mail</dt><dd>${esc(u?.email || '—')}</dd></div>
-        ${provs ? `<div><dt>Entra com</dt><dd>${esc(provs)}</dd></div>` : ''}
-      </dl></div>
-      <h3 class="menu-title">${icon('file-down', { size: 18 })}Seus dados</h3>
-      <p>Baixe uma cópia de tudo o que você cadastrou (pets, cuidados, pesos, gastos, ração e anexos) em um arquivo. É um direito seu pela LGPD.</p>
-      <button class="btn plain" data-action="export">${icon('download', { size: 18 })}Baixar meus dados</button>
-    </div>`, null, { back: configMenu });
+
+  openSheet('Configurações', `
+    <div class="menu form config">
+      <section class="config-sec" aria-labelledby="cfg-lembretes">
+        <h3 class="menu-title" id="cfg-lembretes">${icon('bell', { size: 18 })}Lembretes</h3>
+        <label class="check-field"><input type="checkbox" data-reminder-toggle ${lembretesOn ? 'checked' : ''} ${notifSupported() ? '' : 'disabled'}> Notificações neste aparelho</label>
+        <label class="field"><span>Horário do aviso</span><input type="time" data-reminder-time value="${esc(db.config.horario)}"></label>
+        <p>${status}</p>
+        ${lembretesOn ? `<button class="btn plain" data-action="test-notification">${icon('bell-ring', { size: 18 })}Testar notificação</button>` : ''}
+      </section>
+
+      <section class="config-sec" aria-labelledby="cfg-aparencia">
+        <h3 class="menu-title" id="cfg-aparencia">${icon('palette', { size: 18 })}Aparência</h3>
+        <label class="field"><span>Tema</span>
+          <select data-theme-select>
+            <option value="auto" ${theme === 'auto' ? 'selected' : ''}>Automático (igual ao celular)</option>
+            <option value="light" ${theme === 'light' ? 'selected' : ''}>Claro</option>
+            <option value="dark" ${theme === 'dark' ? 'selected' : ''}>Escuro</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="config-sec" aria-labelledby="cfg-calendario">
+        <h3 class="menu-title" id="cfg-calendario">${icon('calendar-plus', { size: 18 })}Calendário</h3>
+        <p>Envie os cuidados pendentes para o calendário do celular. Os alertas vão junto, então você é avisado mesmo com o app fechado.</p>
+        <button class="btn plain" data-action="export-ics">${icon('calendar-plus', { size: 18 })}Enviar agenda para o calendário</button>
+      </section>
+
+      <section class="config-sec" aria-labelledby="cfg-conta">
+        <h3 class="menu-title" id="cfg-conta">${icon('user', { size: 18 })}Conta</h3>
+        <div class="info card"><dl style="margin:0">
+          <div><dt>E-mail</dt><dd>${esc(u?.email || '—')}</dd></div>
+          ${provs ? `<div><dt>Entra com</dt><dd>${esc(provs)}</dd></div>` : ''}
+        </dl></div>
+        <p>Baixe uma cópia de tudo o que você cadastrou (pets, cuidados, pesos, gastos, ração e anexos). É um direito seu pela LGPD.</p>
+        <button class="btn plain" data-action="export">${icon('download', { size: 18 })}Baixar meus dados</button>
+      </section>
+    </div>`, null, { back: profileMenu });
 }
 
 function ajudaSheet() {
@@ -1833,7 +1818,7 @@ sheet.addEventListener('change', async (e) => {
       toast('Lembretes desativados');
     }
     render();
-    remindersSheet();
+    configMenu();
   }
 });
 
@@ -1989,10 +1974,6 @@ document.addEventListener('click', (e) => {
     case 'profile': profileMenu(); break;
     case 'menu-config': configMenu(); break;
     case 'menu-ajuda': ajudaSheet(); break;
-    case 'cfg-lembretes': remindersSheet(); break;
-    case 'cfg-aparencia': aparenciaSheet(); break;
-    case 'cfg-calendario': calendarioSheet(); break;
-    case 'cfg-conta': contaSheet(); break;
     case 'sheet-back': if (sheetBack) sheetBack(); break;
     case 'export': exportData(); break;
     case 'close-sheet': closeSheet(); break;

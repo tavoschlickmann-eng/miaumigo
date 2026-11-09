@@ -64,7 +64,7 @@ Opcional: sem conta, tudo funciona só no aparelho. Com conta, os dados viram um
 
 ## Menu "Minha conta" (v1.4)
 
-- O avatar no topo do início abre o menu: Configurações (Lembretes, Aparência, Calendário, Conta), Instalar o app, Painel de uso (só administradores), Ajuda e sobre, Sair.
+- O avatar no topo do início abre o menu: Configurações (uma tela única com Lembretes, Aparência, Calendário e Conta), Instalar o app, Painel de uso (só administradores), Ajuda e sobre, Sair.
 - "Baixar meus dados" (Configurações → Conta) substitui o backup/importação.
 - **Instalar o app** (`install.js`): no Android/computador abre a janela nativa de instalação; no iPhone mostra o passo a passo do Safari; em navegadores internos (WhatsApp, Instagram) orienta a abrir no navegador.
 

@@ -658,3 +658,11 @@ a.card:active, .pet-card:active, button.row:active, .menu-row:active { transform
 .install-step { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); line-height: 1.35; }
 .install-num { width: 24px; height: 24px; border-radius: 50%; background: var(--primary); color: var(--primary-ink); font-weight: 800; font-size: 13px; display: grid; place-items: center; flex: none; }
 .install-cta { align-self: center; }
+
+/* ---------- Configurações (tela única) ---------- */
+.config { gap: 0; }
+.config-sec { display: flex; flex-direction: column; gap: 12px; padding: 18px 0; }
+.config-sec:first-child { padding-top: 4px; }
+.config-sec + .config-sec { border-top: 1px solid var(--line); }
+.config-sec .menu-title { margin: 0; }
+.config-sec p { margin: 0; }
