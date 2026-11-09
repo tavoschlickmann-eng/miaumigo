@@ -68,16 +68,16 @@ Opcional: sem conta, tudo funciona só no aparelho. Com conta, os dados viram um
 - "Baixar meus dados" (Configurações → Conta) substitui o backup/importação.
 - **Instalar o app** (`install.js`): no Android/computador abre a janela nativa de instalação; no iPhone mostra o passo a passo do Safari; em navegadores internos (WhatsApp, Instagram) orienta a abrir no navegador.
 
-## Família (v1.5)
+## Família (v1.6)
 
-Os pets são da **família**, não da pessoa. Toda conta começa numa família só dela.
+Cada pessoa tem pets **"Só meus"** (só ela vê) e pode participar de **uma família**, onde todos veem e editam os pets compartilhados.
 
-- **Banco** ([`supabase/familia.sql`](supabase/familia.sql), roda depois do `schema.sql`): tabelas `familias`, `familia_membros` (papel `responsavel` ou `membro`, uma família por pessoa) e `convites` (link de uso único, expira em 7 dias, revogável). `registros` tem `familia_id` (chave: família + id) e `updated_by` (quem alterou, definido pelo servidor).
-- **Regras de acesso**: só membros leem e alteram os registros da família. Arquivos novos em `anexos/<família>/<anexo>`; um arquivo pode ser lido/apagado se estiver na pasta da família ou se um anexo da família apontar para ele (cobre os arquivos antigos em `<usuário>/`). As tabelas de família não têm acesso direto pela API: tudo passa pelas funções `minha_familia`, `criar_convite`, `revogar_convite`, `ver_convite`, `aceitar_convite`, `sair_da_familia`, `remover_membro`, `alterar_papel`, `renomear_familia`.
-- **App** (`familia.js`): Minha conta → Família (membros, convidar pelo WhatsApp, convites pendentes, remover, tornar responsável, sair). O link `#/convite/<token>` é guardado antes do login. Quem já divide uma família precisa sair dela para entrar em outra. Ao aceitar, a pessoa escolhe levar ou não os pets; pets que já existem na família (mesmo nome, sem diferenciar maiúsculas/acentos, ou mesmo registro) não vão e são apagados com o que estiver ligado a eles.
-- **Sincronização**: cada sincronização começa por `minha_familia()`. Os dados do aparelho pertencem a uma família (`db.owner`); se ela mudar (saiu, foi removido, outra conta), o aparelho é limpo e baixa a família atual. Editar mostra "Alterado por Fulana em ..." quando a família tem 2+ pessoas.
-- **Painel de uso**: famílias, compartilhadas, pessoas nelas, convites criados/aceitos/cancelados em 30 dias.
-- **Testes**: `window.__setSyncRemote(servidorSimulado)` aceita um servidor com `userId`, `rpc`, `pull(familiaId, desde)`, `upsert`, `upload`, `download` e `remove`.
+- **Banco**: [`supabase/familia.sql`](supabase/familia.sql) (v1.5) e depois [`supabase/espacos.sql`](supabase/espacos.sql) (v1.6). Tabelas `familias` (`pessoal = true` é o espaço "Só meus"), `familia_membros` (papel `responsavel` ou `membro`; no máximo um espaço pessoal e uma família por pessoa) e `convites` (link de uso único, expira em 7 dias, revogável). `registros` tem `familia_id` (chave: espaço + id) e `updated_by` (quem alterou, definido pelo servidor).
+- **Regras de acesso**: cada pessoa lê e altera só os registros dos próprios espaços (`minhas_familias()`). Arquivos em `anexos/<espaço>/<anexo>`; um arquivo pode ser lido/apagado se estiver na pasta de um espaço da pessoa ou se um anexo de um espaço dela apontar para ele (por isso um pet compartilhado leva os anexos sem mover arquivo). As tabelas de família não têm acesso direto pela API: tudo passa pelas funções `meus_espacos`, `criar_convite` (cria a família no primeiro convite), `revogar_convite`, `ver_convite`, `aceitar_convite`, `compartilhar_pets`, `sair_da_familia` (a última pessoa desfaz a família e os pets voltam para "Só meus"), `remover_membro`, `alterar_papel`, `renomear_familia`.
+- **App** (`familia.js`): Minha conta → Família (criar e convidar escolhendo os pets, membros, convites pendentes, compartilhar pets, remover, tornar responsável, sair/desfazer). Perfil do pet: etiqueta "Só meu"/"Família" e "Compartilhar com a família" (sem volta). Pet novo: caixa "Compartilhar com a família". O link `#/convite/<token>` é guardado antes do login. Quem já está numa família precisa sair dela para entrar em outra. Ao aceitar, os pets da pessoa continuam "Só meus".
+- **Sincronização**: começa por `meus_espacos()`; baixa cada espaço desde a última alteração dele e envia cada registro para o espaço certo (o pet decide; cuidados, pesos, ração, gastos e anexos acompanham o pet; gasto "Geral" vai para a família). Ao sair ou ser removido, só os dados da família saem do aparelho. Editar mostra "Alterado por Fulana em ..." nos registros da família.
+- **Painel de uso**: famílias, compartilhadas, pessoas nelas, pets compartilhados, convites criados/aceitos/cancelados em 30 dias.
+- **Testes**: `window.__setSyncRemote(servidorSimulado)` aceita um servidor com `userId`, `rpc`, `pull(espaço, desde)`, `upsert`, `upload`, `download` e `remove`.
 
 ## Manter o Supabase ativo
 

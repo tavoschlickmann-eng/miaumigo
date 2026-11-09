@@ -173,6 +173,8 @@ const latestWeight = (petId) => db.pesos.filter((w) => w.petId === petId).sort(b
 const reminderOf = (c) => (c.lembrete === undefined ? 0 : Number(c.lembrete));
 const fullDate = (s) => (s ? parseISO(s).toLocaleDateString('pt-BR') : '');
 /** "Alterado por Fulana em ..." no editar (só em família com 2+ pessoas; familia.js). */
+/** Etiqueta "Só meu" / "Família" (familia.js). `soPessoal`: só a de "Só meu" (lista de pets). */
+const espTag = (p, soPessoal = false) => (typeof petEspacoTag === 'function' && (!soPessoal || !petDaFamilia(p.id)) ? petEspacoTag(p) : '');
 const autorLinha = (rec) => (rec?.id && typeof autorInfo === 'function' ? autorInfo(rec.id) : '');
 
 /* ---- Ração ---- */
@@ -432,7 +434,7 @@ function viewPets() {
       <a class="card pet-card" href="#/pet/${p.id}">
         ${avatar(p)}
         <div style="min-width:0">
-          <div class="name">${esc(p.nome)} ${pend ? `<span class="tag">${pend} atrasado${pend > 1 ? 's' : ''}</span>` : ''}</div>
+          <div class="name">${esc(p.nome)} ${pend ? `<span class="tag">${pend} atrasado${pend > 1 ? 's' : ''}</span>` : ''}${espTag(p, true)}</div>
           <div class="meta">${meta}</div>
         </div>
         <span class="chev">${icon('chevron-right')}</span>
@@ -467,7 +469,9 @@ function viewPet(id) {
       <h1>${esc(p.nome)}</h1>
       <div class="meta">${esc([p.raca, ageText(p.nascimento)].filter(Boolean).join(' · ') || 'Toque no lápis para completar o perfil')}</div>
       <div class="chips">${chips.map(([ic, l]) => `<span class="chip">${icon(ic, { size: 15 })}${esc(l)}</span>`).join('')}</div>
+      ${espTag(p)}
       <a class="btn sm ghost" href="#/carteira/${p.id}" style="margin-top:12px">${icon('id-card', { size: 16 })}Carteirinha de vacinação</a>
+      ${typeof petCompartilharBtn === 'function' ? petCompartilharBtn(p) : ''}
     </div>
     <div class="seg" role="group" aria-label="Seções do pet">
       ${tabs.map(([k, l]) => `<button data-action="pet-tab" data-tab="${k}" aria-pressed="${ui.petTab === k}">${l}</button>`).join('')}
@@ -1203,6 +1207,7 @@ function petForm(pet) {
         <label class="field"><span>Nascimento</span><input type="date" name="nascimento" max="${today()}" value="${esc(p.nascimento)}"></label>
       </div>
       <label class="check-field"><input type="checkbox" name="castrado" ${p.castrado ? 'checked' : ''}> Castrado(a)</label>
+      ${!pet && typeof campoCompartilharNovoPet === 'function' ? campoCompartilharNovoPet() : ''}
       ${!pet ? `<label class="field"><span>Peso atual (kg)</span><input type="number" name="peso" step="0.01" min="0" inputmode="decimal" placeholder="Opcional"></label>` : ''}
       <div class="two">
         <label class="field"><span>Microchip</span><input name="microchip" maxlength="30" value="${esc(p.microchip)}"></label>
@@ -1227,6 +1232,7 @@ function petForm(pet) {
       toast('Perfil atualizado');
     } else {
       const novo = { id: uid(), criadoEm: today(), ...fields };
+      if (typeof definirEspacoNovoPet === 'function') definirEspacoNovoPet(novo.id, !!d.compartilhar);
       db.pets.push(novo);
       const peso = parseFloat(String(d.peso).replace(',', '.'));
       if (peso > 0) db.pesos.push({ id: uid(), petId: novo.id, data: today(), kg: peso });
@@ -1679,7 +1685,7 @@ function exportICS(cares, name) {
 }
 
 /* ---- Menu de perfil ("Minha conta") e Configurações ---- */
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.6.0';
 const SUPORTE_EMAIL = 'tavoschlickmann@gmail.com';
 
 const contaAtual = () => (typeof session !== 'undefined' && session?.user) || null;

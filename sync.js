@@ -28,21 +28,53 @@ const syncState = { status: 'idle', error: '', lastSync: null, running: false, a
 function loadMeta() {
   try { return JSON.parse(localStorage.getItem(SYNC_KEY)) || null; } catch { return null; }
 }
-function freshMeta(familiaId, userId) {
-  return { familiaId, userId, lastPull: '1970-01-01T00:00:00Z', hashes: {}, anexos: {}, autores: {} };
+const DESDE = '1970-01-01T00:00:00Z';
+/* meta (por conta):
+   lastPull: { [espaço]: data } — última alteração baixada de cada espaço
+   hashes:   { [id]: { h, t } } — como o registro estava na última sincronização
+   fam:      { [id]: espaço }   — onde o registro está guardado na nuvem
+   anexos:   { [id]: { path, fam } }, autores: { [id]: { by, at } } */
+function freshMeta(userId) {
+  return { v: 2, userId, lastPull: {}, hashes: {}, fam: {}, anexos: {}, autores: {} };
 }
 
-/* ---------------- Família ----------------
-   Os dados pertencem à FAMÍLIA, não à pessoa. `familia` é a resposta de
-   minha_familia() no Supabase (id, nome, papel, membros, convites) e fica
-   guardada no aparelho para aparecer mesmo sem internet. */
-const FAMILIA_KEY = 'miaumigo:familia';
-let familia = (() => { try { return JSON.parse(localStorage.getItem(FAMILIA_KEY)) || null; } catch { return null; } })();
-function setFamilia(f) {
-  familia = f;
-  try { if (f) localStorage.setItem(FAMILIA_KEY, JSON.stringify(f)); else localStorage.removeItem(FAMILIA_KEY); } catch { /* cheio */ }
+/* ---------------- Espaços: "Só meus" + família ----------------
+   Cada pessoa tem um espaço pessoal (pets só dela) e pode estar em UMA
+   família compartilhada. `espacos` é a resposta de meus_espacos() no
+   Supabase: { pessoal: id, familia: { id, nome, papel, membros, convites } | null }.
+   Fica guardada no aparelho para aparecer mesmo sem internet. */
+const FAMILIA_KEY = 'miaumigo:espacos';
+let espacos = (() => { try { return JSON.parse(localStorage.getItem(FAMILIA_KEY)) || null; } catch { return null; } })();
+let familia = espacos?.familia || null; // a família compartilhada (ou null)
+function setEspacos(e) {
+  espacos = e;
+  familia = e?.familia || null;
+  try { if (e) localStorage.setItem(FAMILIA_KEY, JSON.stringify(e)); else localStorage.removeItem(FAMILIA_KEY); } catch { /* cheio */ }
 }
-let trocaDeFamiliaEsperada = false; // aceitar convite / sair: o próprio app trocou de família
+try { localStorage.removeItem('miaumigo:familia'); } catch { /* resto da 1.5.0 */ }
+let trocaDeFamiliaEsperada = false; // entrar/sair pelo próprio app: sem aviso de "você saiu"
+
+/** Espaço de um registro: pets ficam onde estão (ou onde foram criados);
+    o resto acompanha o pet; gasto "Geral" vai para a família, se houver. */
+function espacoDe(rec, tipo) {
+  const pessoal = espacos?.pessoal;
+  if (tipo === 'pet') return meta?.fam?.[rec.id] || pessoal;
+  if (tipo === 'anexo') {
+    const care = db.cuidados.find((c) => c.id === rec.careId);
+    return care ? espacoDe(care, 'cuidado') : (meta?.anexos?.[rec.id]?.fam || pessoal);
+  }
+  const pet = rec.petId ? db.pets.find((p) => p.id === rec.petId) : null;
+  if (pet) return espacoDe(pet, 'pet');
+  if (rec.petId) return meta?.fam?.[rec.id] || pessoal; // pet sumiu: fica onde está
+  return meta?.fam?.[rec.id] || familia?.id || pessoal;
+}
+const petDaFamilia = (petId) => !!familia && espacoDe({ id: petId }, 'pet') === familia.id;
+/** Pet novo: escolhe onde guardar (família ou só meu). */
+function definirEspacoNovoPet(petId, compartilhar) {
+  if (!meta || !espacos) return;
+  meta.fam[petId] = compartilhar && familia ? familia.id : espacos.pessoal;
+  saveMeta();
+}
 let meta = loadMeta();
 function saveMeta() {
   try { localStorage.setItem(SYNC_KEY, JSON.stringify(meta)); } catch { /* cheio */ }
@@ -119,11 +151,11 @@ let remote = supabaseRemote;
 const isLoggedIn = () => !!remote.userId();
 
 /* ---------------- Dono dos dados do aparelho ----------------
-   Os dados locais pertencem a UMA família (db.owner = id da família,
-   db.ownerUser = quem estava logado). Se a família mudar (outra conta
-   entrou, a pessoa saiu ou foi removida da família), os dados locais são
-   apagados (nunca enviados) e os da família atual são baixados da nuvem.
-   Isso impede que dados de uma família vazem para outra. */
+   Os dados locais pertencem a UMA conta (db.owner = id da conta): o espaço
+   "só meus" dela e a família em que ela está. Se outra conta entrar neste
+   aparelho, os dados locais são apagados (nunca enviados) e os da nova
+   conta são baixados. Se a pessoa sair ou for removida da família, só os
+   dados da família somem do aparelho. Isso impede vazamento entre contas. */
 
 const localDataCount = async () => {
   const n = Object.values(COLLECTIONS).reduce((s, name) => s + db[name].length, 0);
@@ -146,34 +178,33 @@ async function wipeLocal() {
 
 let ownerPromptOpen = false;
 
-/** Garante que os dados locais são da família `fam` (da conta `uid`). Retorna false se precisa perguntar ao usuário. */
-async function ensureOwner(fam, uid) {
-  const fid = fam.id;
-  if (db.owner === fid && db.ownerUser === uid) return true;
-  const claim = () => { db.owner = fid; db.ownerUser = uid; persistLocal(); return true; };
-  const herdaMeta = () => { if (meta?.userId === uid && !meta.familiaId) { meta.familiaId = fid; meta.autores ||= {}; saveMeta(); } };
-  const sozinho = (fam.membros || []).length <= 1;
-
-  if (db.owner === fid) return claim();                                    // mesma família, outra pessoa dela: os dados são da família
-  if (db.owner && db.owner === uid) {                                      // versão 1.4: dono era a própria conta
-    if (sozinho) { herdaMeta(); return claim(); }                          // a família dela é a conta migrada: mantém tudo
-    await wipeLocal(); return claim();
-  }
-  if (db.owner) {                                                          // outra família (ou outra conta)
-    const saiu = db.ownerUser === uid && !trocaDeFamiliaEsperada;
-    const nomeAntigo = db.ownerNome;
-    await wipeLocal();
-    if (saiu) toast(`Você não faz mais parte da família${nomeAntigo ? ` “${nomeAntigo}”` : ''}. Os dados dela foram apagados deste aparelho.`);
-    return claim();
-  }
-  if (meta?.userId === uid && sozinho) { herdaMeta(); return claim(); }    // versão antiga, já sincronizada com esta conta
-  if (meta?.userId || meta?.familiaId) { await wipeLocal(); return claim(); } // versão antiga, de outra conta
-  if (!(await localDataCount())) return claim();                           // aparelho vazio
-  askAdopt(fid, uid);                                                      // dados sem dono: a pessoa decide
+/** Garante que os dados locais são da conta `uid`. Retorna false se precisa perguntar ao usuário. */
+async function ensureOwner(uid) {
+  if (db.owner === uid) return true;
+  const claim = () => { db.owner = uid; delete db.ownerUser; delete db.ownerNome; persistLocal(); return true; };
+  if (db.owner && db.ownerUser === uid) return claim();    // versão 1.5.0: o dono era a família desta conta
+  if (db.owner) { await wipeLocal(); return claim(); }     // dados de outra conta
+  if (meta?.userId === uid) return claim();                // versão antiga, já sincronizada com esta conta
+  if (meta?.userId) { await wipeLocal(); return claim(); } // versão antiga, de outra conta
+  if (!(await localDataCount())) return claim();           // aparelho vazio
+  askAdopt(uid);                                           // dados sem dono: a pessoa decide
   return false;
 }
 
-function askAdopt(fid, uid) {
+/** Converte a sincronização da versão 1.5.0 (um espaço só). Retorna false se não dá para aproveitar. */
+function migrarMeta(uid) {
+  if (meta.userId !== uid || !meta.familiaId || typeof meta.lastPull !== 'string') return false;
+  const f = meta.familiaId;
+  const fam = {};
+  Object.keys(meta.hashes || {}).forEach((id) => { fam[id] = f; });
+  const anexos = {};
+  Object.entries(meta.anexos || {}).forEach(([id, a]) => { anexos[id] = { ...a, fam: f }; });
+  meta = { v: 2, userId: uid, lastPull: { [f]: meta.lastPull }, hashes: meta.hashes || {}, fam, anexos, autores: meta.autores || {} };
+  saveMeta();
+  return true;
+}
+
+function askAdopt(uid) {
   if (ownerPromptOpen) return;
   ownerPromptOpen = true;
   const nomes = db.pets.map((p) => p.nome).slice(0, 4).join(', ');
@@ -186,8 +217,8 @@ function askAdopt(fid, uid) {
     <div class="menu">
       <p>Encontramos dados salvos neste aparelho que não estão ligados a nenhuma conta${resumo ? `: <b>${resumo}</b>` : ''}.</p>
       <p>Se forem seus, junte à sua conta. Se forem de outra pessoa, descarte: eles não serão enviados.</p>
-      <button class="btn" data-action="adopt-local" data-uid="${esc(uid)}" data-fid="${esc(fid)}">${icon('cloud', { size: 18 })}Juntar à minha conta</button>
-      <button class="btn danger" data-action="discard-local" data-uid="${esc(uid)}" data-fid="${esc(fid)}">${icon('trash-2', { size: 18 })}Descartar dados do aparelho</button>
+      <button class="btn" data-action="adopt-local" data-uid="${esc(uid)}">${icon('cloud', { size: 18 })}Juntar à minha conta</button>
+      <button class="btn danger" data-action="discard-local" data-uid="${esc(uid)}">${icon('trash-2', { size: 18 })}Descartar dados do aparelho</button>
     </div>`, null);
 }
 
@@ -195,15 +226,16 @@ function askAdopt(fid, uid) {
 async function hasPendingChanges() {
   if (!meta) return (await localDataCount()) > 0;
   const present = new Set();
-  for (const name of Object.values(COLLECTIONS)) {
+  for (const [tipo, name] of Object.entries(COLLECTIONS)) {
     for (const rec of db[name]) {
       present.add(rec.id);
-      if (meta.hashes[rec.id]?.h !== hashOf(rec)) return true;
+      if (meta.hashes[rec.id]?.h !== hashOf(rec) || meta.fam[rec.id] !== espacoDe(rec, tipo)) return true;
     }
   }
   if (Object.keys(meta.hashes).some((id) => !present.has(id))) return true;
   const anexos = await IDB.all().catch(() => []);
-  return anexos.some((a) => !meta.anexos[a.id]) || Object.keys(meta.anexos).some((id) => !anexos.some((a) => a.id === id));
+  return anexos.some((a) => !meta.anexos[a.id] || meta.anexos[a.id].fam !== espacoDe(a, 'anexo'))
+    || Object.keys(meta.anexos).some((id) => !anexos.some((a) => a.id === id));
 }
 
 /* ---------------- Sincronização ---------------- */
@@ -215,6 +247,27 @@ function applyRemote(target, dados) {
   Object.assign(target, dados);
 }
 
+/** Tira do aparelho o que é de espaços que não são mais da pessoa (saiu ou foi removida da família). */
+async function largarEspacosAntigos(meus) {
+  const fora = new Set(Object.entries(meta.fam).filter(([, f]) => !meus.has(f)).map(([id]) => id));
+  const anexosFora = Object.entries(meta.anexos).filter(([, a]) => a.fam && !meus.has(a.fam)).map(([id]) => id);
+  Object.keys(meta.lastPull).forEach((f) => { if (!meus.has(f)) delete meta.lastPull[f]; });
+  if (!fora.size && !anexosFora.length) return false;
+  const petsFora = new Set(db.pets.filter((p) => fora.has(p.id)).map((p) => p.id));
+  const vai = (r) => fora.has(r.id) || (r.petId && petsFora.has(r.petId));
+  const caresFora = new Set(db.cuidados.filter(vai).map((c) => c.id));
+  for (const name of Object.values(COLLECTIONS)) db[name] = db[name].filter((r) => !vai(r));
+  for (const id of fora) { delete meta.hashes[id]; delete meta.fam[id]; delete meta.autores[id]; }
+  const locais = await IDB.all().catch(() => []);
+  for (const a of locais) {
+    if (anexosFora.includes(a.id) || caresFora.has(a.careId)) { await IDB.del(a.id).catch(() => {}); delete meta.anexos[a.id]; }
+  }
+  anexosFora.forEach((id) => delete meta.anexos[id]);
+  persistLocal();
+  saveMeta();
+  return true;
+}
+
 async function syncNow() {
   if (!isLoggedIn()) return;
   if (syncState.running) { syncState.again = true; return; }
@@ -224,37 +277,48 @@ async function syncNow() {
   setSyncStatus('syncing');
   try {
     const uid = remote.userId();
-    /* 0. Família atual (decide de quem são os dados) */
-    const fam = await remote.rpc('minha_familia');
+    /* 0. Espaços atuais: "só meus" + família (decide o que o aparelho pode ter) */
+    const esp = await remote.rpc('meus_espacos');
     if (uid !== remote.userId()) { setSyncStatus('idle'); return; } // a conta mudou durante a chamada
-    setFamilia(fam);
-    if (!(await ensureOwner(fam, uid))) { setSyncStatus('idle'); return; } // aguardando a pessoa decidir
+    const familiaAntes = db.owner === uid ? familia : null; // só avisa se a família era desta conta
+    setEspacos(esp);
+    if (!(await ensureOwner(uid))) { setSyncStatus('idle'); return; } // aguardando a pessoa decidir
+    if (meta && meta.v !== 2 && !migrarMeta(uid)) { await wipeLocal(); db.owner = uid; persistLocal(); }
+    if (!meta || meta.userId !== uid) { meta = freshMeta(uid); saveMeta(); }
+
+    const meus = new Set([esp.pessoal, esp.familia?.id].filter(Boolean));
+    const largou = await largarEspacosAntigos(meus);
+    if (familiaAntes && familiaAntes.id !== esp.familia?.id && !trocaDeFamiliaEsperada) {
+      toast(`Você não faz mais parte da família “${familiaAntes.nome}”. Os pets dela foram tirados deste aparelho; os seus continuam aqui.`);
+    }
     trocaDeFamiliaEsperada = false;
-    if (db.ownerNome !== fam.nome) { db.ownerNome = fam.nome; persistLocal(); }
-    const fid = fam.id;
-    if (!meta || meta.familiaId !== fid) { meta = freshMeta(fid, uid); saveMeta(); }
-    meta.autores ||= {};
+    let changedLocal = largou;
 
-    /* 1. Pull */
-    const rows = await remote.pull(fid, meta.lastPull);
-    let changedLocal = false;
+    /* 1. Pull (cada espaço desde a última alteração baixada dele) */
     const remoteAnexos = [];
-    for (const row of rows) {
-      if (row.updated_at > meta.lastPull) meta.lastPull = row.updated_at;
-      if (row.updated_by) meta.autores[row.id] = { by: row.updated_by, at: row.updated_at };
-      if (row.tipo === 'anexo') { remoteAnexos.push(row); continue; }
-      const coll = db[COLLECTIONS[row.tipo]];
-      if (!coll) continue;
-      const idx = coll.findIndex((x) => x.id === row.id);
-      const local = idx >= 0 ? coll[idx] : null;
-      const known = meta.hashes[row.id];
-      const localChanged = local ? hashOf(local) !== known?.h : !!known;
+    for (const fid of meus) {
+      const rows = await remote.pull(fid, meta.lastPull[fid] || DESDE);
+      for (const row of rows) {
+        if (row.updated_at > (meta.lastPull[fid] || DESDE)) meta.lastPull[fid] = row.updated_at;
+        if (row.tipo === 'anexo') { remoteAnexos.push({ ...row, fam: fid }); continue; }
+        // marca de exclusão deixada quando o registro mudou de espaço: ele continua no outro
+        if (row.excluido && meta.fam[row.id] && meta.fam[row.id] !== fid) continue;
+        const coll = db[COLLECTIONS[row.tipo]];
+        if (!coll) continue;
+        const idx = coll.findIndex((x) => x.id === row.id);
+        const local = idx >= 0 ? coll[idx] : null;
+        const known = meta.hashes[row.id];
+        const localChanged = local ? hashOf(local) !== known?.h : !!known;
 
-      if (localChanged) continue; // vale o do aparelho; vai no push
-      if (row.excluido) {
-        if (local) { coll.splice(idx, 1); changedLocal = true; }
-        delete meta.hashes[row.id];
-      } else {
+        if (row.excluido) {
+          if (localChanged) continue; // vale o do aparelho; vai no push
+          if (local) { coll.splice(idx, 1); changedLocal = true; }
+          delete meta.hashes[row.id]; delete meta.fam[row.id]; delete meta.autores[row.id];
+          continue;
+        }
+        meta.fam[row.id] = fid; // onde ele está na nuvem (pode ter sido compartilhado)
+        if (row.updated_by) meta.autores[row.id] = { by: row.updated_by, at: row.updated_at };
+        if (localChanged) continue;
         const h = hashOf(row.dados);
         if (local && hashOf(local) === h) { meta.hashes[row.id] = { h, t: row.tipo }; continue; } // já igual
         if (local) applyRemote(local, row.dados);
@@ -264,32 +328,35 @@ async function syncNow() {
       }
     }
 
-    /* 2. Push (alterados e excluídos no aparelho) */
+    /* 2. Push (alterados, excluídos e os que mudaram de espaço) */
     const out = [];
     const present = new Set();
     for (const [tipo, name] of Object.entries(COLLECTIONS)) {
       for (const rec of db[name]) {
         present.add(rec.id);
+        const fid = espacoDe(rec, tipo);
+        const antes = meta.fam[rec.id];
         const h = hashOf(rec);
-        if (meta.hashes[rec.id]?.h !== h) out.push({ row: { familia_id: fid, id: rec.id, tipo, dados: rec, excluido: false }, h });
+        if (antes && antes !== fid && meta.hashes[rec.id]) out.push({ row: { familia_id: antes, id: rec.id, tipo, dados: {}, excluido: true }, h: null, mudou: true });
+        if (meta.hashes[rec.id]?.h !== h || antes !== fid) out.push({ row: { familia_id: fid, id: rec.id, tipo, dados: rec, excluido: false }, h });
       }
     }
     for (const [id, info] of Object.entries(meta.hashes)) {
-      if (!present.has(id)) out.push({ row: { familia_id: fid, id, tipo: info.t, dados: {}, excluido: true }, h: null });
+      if (!present.has(id)) out.push({ row: { familia_id: meta.fam[id] || esp.pessoal, id, tipo: info.t, dados: {}, excluido: true }, h: null });
     }
     if (out.length) {
       await remote.upsert(out.map((o) => o.row));
       const agora = new Date().toISOString();
-      for (const { row, h } of out) {
-        if (h) { meta.hashes[row.id] = { h, t: row.tipo }; meta.autores[row.id] = { by: uid, at: agora }; }
-        else { delete meta.hashes[row.id]; delete meta.autores[row.id]; }
+      for (const { row, h, mudou } of out) {
+        if (h) { meta.hashes[row.id] = { h, t: row.tipo }; meta.fam[row.id] = row.familia_id; meta.autores[row.id] = { by: uid, at: agora }; }
+        else if (!mudou) { delete meta.hashes[row.id]; delete meta.fam[row.id]; delete meta.autores[row.id]; }
       }
     }
     saveMeta();
     if (changedLocal) { persistLocal(); render(); }
 
     /* 3. Anexos */
-    await syncAttachments(fid, remoteAnexos);
+    await syncAttachments(remoteAnexos);
 
     syncState.lastSync = new Date();
     setSyncStatus('ok');
@@ -302,7 +369,7 @@ async function syncNow() {
   }
 }
 
-async function syncAttachments(fid, remoteRows) {
+async function syncAttachments(remoteRows) {
   let local = [];
   try { local = await IDB.all(); } catch { return; } // sem IndexedDB
   const localIds = new Set(local.map((a) => a.id));
@@ -310,36 +377,52 @@ async function syncAttachments(fid, remoteRows) {
 
   // vindos da nuvem
   for (const row of remoteRows) {
+    const m = meta.anexos[row.id];
     if (row.excluido) {
-      if (meta.anexos[row.id] && localIds.has(row.id)) { await IDB.del(row.id); changed = true; }
+      if (m?.fam && m.fam !== row.fam) continue; // mudou de espaço
+      if (m && localIds.has(row.id)) { await IDB.del(row.id); localIds.delete(row.id); changed = true; }
       delete meta.anexos[row.id];
-    } else if (!localIds.has(row.id) && !meta.anexos[row.id]) {
+    } else if (m) {
+      m.fam = row.fam; // pode ter sido compartilhado junto com o pet
+    } else if (!localIds.has(row.id)) {
       const blob = await remote.download(row.dados.path);
       const { path, ...info } = row.dados;
       await IDB.put({ ...info, id: row.id, blob });
-      meta.anexos[row.id] = { path };
+      meta.anexos[row.id] = { path, fam: row.fam };
       localIds.add(row.id);
       changed = true;
     }
   }
   saveMeta();
 
-  // novos no aparelho
   for (const a of local) {
-    if (meta.anexos[a.id]) continue;
-    const path = `${fid}/${a.id}`;
-    await remote.upload(path, a.blob, a.tipo);
+    if (!localIds.has(a.id)) continue;
+    const fam = espacoDe(a, 'anexo');
+    const m = meta.anexos[a.id];
     const { blob, ...info } = a;
-    await remote.upsert([{ familia_id: fid, id: a.id, tipo: 'anexo', dados: { ...info, path }, excluido: false }]);
-    meta.anexos[a.id] = { path };
-    saveMeta();
+    if (!m) {
+      // novo no aparelho
+      const path = `${fam}/${a.id}`;
+      await remote.upload(path, blob, a.tipo);
+      await remote.upsert([{ familia_id: fam, id: a.id, tipo: 'anexo', dados: { ...info, path }, excluido: false }]);
+      meta.anexos[a.id] = { path, fam };
+      saveMeta();
+    } else if (m.fam && m.fam !== fam) {
+      // o cuidado mudou de espaço: o registro vai junto; o arquivo fica onde está
+      await remote.upsert([
+        { familia_id: m.fam, id: a.id, tipo: 'anexo', dados: {}, excluido: true },
+        { familia_id: fam, id: a.id, tipo: 'anexo', dados: { ...info, path: m.path }, excluido: false },
+      ]);
+      m.fam = fam;
+      saveMeta();
+    }
   }
 
   // apagados no aparelho
   const gone = Object.entries(meta.anexos).filter(([id]) => !localIds.has(id));
   if (gone.length) {
     await remote.remove(gone.map(([, v]) => v.path));
-    await remote.upsert(gone.map(([id]) => ({ familia_id: fid, id, tipo: 'anexo', dados: {}, excluido: true })));
+    await remote.upsert(gone.map(([id, v]) => ({ familia_id: v.fam || espacos.pessoal, id, tipo: 'anexo', dados: {}, excluido: true })));
     gone.forEach(([id]) => delete meta.anexos[id]);
     saveMeta();
   }
@@ -581,7 +664,7 @@ function viewPainel() {
 
     ${f ? `
     <section class="section">
-      <div class="section-head"><h2>Famílias</h2>${f.compartilhadas ? `<span class="tag">até ${fmtN(f.maior)} pessoas</span>` : ''}</div>
+      <div class="section-head"><h2>Famílias</h2>${f.pets_compartilhados !== undefined ? `<span class="tag">${fmtN(f.pets_compartilhados)} pets compartilhados</span>` : ''}</div>
       <div class="stats">
         <div class="card stat"><div class="num">${fmtN(f.total)}</div><div class="lbl">famílias</div></div>
         <div class="card stat"><div class="num">${fmtN(f.compartilhadas)}</div><div class="lbl">compartilhadas (2+ pessoas)</div></div>
@@ -891,8 +974,7 @@ document.addEventListener('click', (e) => {
       if (uid !== remote.userId()) { closeSheet(); break; } // a conta mudou nesse meio-tempo
       const go = async () => {
         if (el.dataset.action === 'discard-local') await wipeLocal();
-        db.owner = el.dataset.fid;
-        db.ownerUser = uid;
+        db.owner = uid;
         persistLocal();
         ownerPromptOpen = false;
         closeSheet();
@@ -944,7 +1026,7 @@ if (syncConfigured) {
       if (event === 'SIGNED_OUT') {
         // saiu da conta: os dados do aparelho são apagados e o acesso fica bloqueado
         isAdmin = false;
-        setFamilia(null);
+        setEspacos(null);
         Object.assign(painel, { dados: null, erro: '', em: null });
         ownerPromptOpen = false;
         closeSheet();
@@ -978,4 +1060,4 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) sync
 setInterval(() => { if (!document.hidden) syncNow(); }, 60 * 1000);
 
 /* Apenas para testes: troca o backend por um simulado. */
-window.__setSyncRemote = (r) => { remote = r || supabaseRemote; meta = null; localStorage.removeItem(SYNC_KEY); setFamilia(null); updateSyncUI(); render(); };
+window.__setSyncRemote = (r) => { remote = r || supabaseRemote; meta = null; localStorage.removeItem(SYNC_KEY); setEspacos(null); updateSyncUI(); render(); };

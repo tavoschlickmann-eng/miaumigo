@@ -700,3 +700,14 @@ a.card:active, .pet-card:active, button.row:active, .menu-row:active { transform
 .convite-nota .ico { flex: none; margin-top: 2px; color: var(--ok); }
 .convite-nota.warn { color: var(--ink); }
 .convite-nota.warn .ico { color: var(--warn); }
+/* pets "só meus" x família */
+.espaco-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 800; padding: 2px 9px; border-radius: 999px; background: var(--surface-2); color: var(--muted); vertical-align: 1px; margin-left: 4px; }
+.espaco-tag.fam { background: var(--primary-soft); color: var(--primary); }
+.pet-hero .espaco-tag { margin: 10px 0 0; }
+.compartilhar-pet { margin-top: 10px; }
+.fam-vazia { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 6px 4px 4px; }
+.fam-vazia b { font-size: 18px; }
+.fam-vazia p { margin: 0; }
+.pet-escolha .menu-row { cursor: pointer; }
+.pet-escolha input[type=checkbox] { width: 22px; height: 22px; margin-left: auto; accent-color: var(--primary); flex: none; }
+.pet-escolha .avatar { --size: 40px; }

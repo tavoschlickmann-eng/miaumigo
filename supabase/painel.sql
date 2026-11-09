@@ -85,10 +85,11 @@ begin
 
     -- famílias (Fase 2): compartilhada = 2 pessoas ou mais
     'familias', jsonb_build_object(
-      'total',         (select count(*) from public.familias),
+      'total',         (select count(*) from public.familias where not pessoal),
       'compartilhadas', (select count(*) from (select familia_id from public.familia_membros group by 1 having count(*) > 1) x),
       'pessoas_em_compartilhadas', (select coalesce(sum(n), 0) from (select count(*) as n from public.familia_membros group by familia_id having count(*) > 1) x),
-      'maior',         (select coalesce(max(n), 0) from (select count(*) as n from public.familia_membros group by familia_id) x),
+      'maior',         (select coalesce(max(n), 0) from (select count(*) as n from public.familia_membros where not pessoal group by familia_id) x),
+      'pets_compartilhados', (select count(*) from public.registros r join public.familias f on f.id = r.familia_id where r.tipo = 'pet' and not r.excluido and not f.pessoal),
       'convites_30d',  (select count(*) from public.convites where criado_em > now() - interval '30 days'),
       'aceitos_30d',   (select count(*) from public.convites where usado_em > now() - interval '30 days'),
       'revogados_30d', (select count(*) from public.convites where revogado_em > now() - interval '30 days')

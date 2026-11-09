@@ -12,7 +12,7 @@
 1. No menu lateral, abra **SQL Editor** → **New query**.
 2. Cole todo o conteúdo de [`schema.sql`](schema.sql) e clique em **Run**.
 3. Deve aparecer *Success. No rows returned*.
-4. Depois, do mesmo jeito, rode [`familia.sql`](familia.sql) (famílias e compartilhamento), [`painel.sql`](painel.sql) (painel de uso) e [`ping.sql`](ping.sql) (manter ativo). A conferência no fim do `familia.sql` deve mostrar `registros_sem_familia = 0`.
+4. Depois, do mesmo jeito, rode [`familia.sql`](familia.sql) e [`espacos.sql`](espacos.sql) (famílias e pets "Só meus"), [`painel.sql`](painel.sql) (painel de uso) e [`ping.sql`](ping.sql) (manter ativo). A conferência no fim do `familia.sql` deve mostrar `registros_sem_familia = 0`.
 
 ## 3. Ajustar o login
 Em **Authentication → URL Configuration**:

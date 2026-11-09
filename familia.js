@@ -2,10 +2,11 @@
 
 /* =========================================================
    Miaumigo — Família
-   Pets compartilhados: membros, convites por link, sair/remover
-   e "quem alterou". As regras valem NO BANCO (supabase/familia.sql);
-   aqui fica só a interface. Usa `familia`, `remote`, `meta` e
-   `syncAndWait` do sync.js.
+   Cada pessoa tem pets "só meus" e pode participar de UMA família.
+   Aqui: membros, convites por link, compartilhar pets, sair/remover
+   e "quem alterou". As regras valem NO BANCO (supabase/espacos.sql);
+   aqui fica só a interface. Usa `espacos`, `familia`, `remote`, `meta`,
+   `espacoDe` e `syncAndWait` do sync.js.
    ========================================================= */
 
 const CONVITE_KEY = 'miaumigo:convite';
@@ -33,6 +34,8 @@ const souResponsavel = () => familia?.papel === 'responsavel';
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 const dataCurta = (iso) => new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 const listaNomes = (nomes) => (nomes.length <= 1 ? nomes.join('') : `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}`);
+/** Pets "só meus" (os que não estão na família). */
+const petsSoMeus = () => db.pets.filter((p) => !petDaFamilia(p.id));
 
 function erroFamilia(e) {
   const m = String(e?.message || e || '');
@@ -44,7 +47,7 @@ function erroFamilia(e) {
     [/convite inválido/i, 'Convite não encontrado. Confira se o link está completo.'],
     [/só o responsável/i, 'Só quem é responsável pela família pode fazer isso.'],
     [/limite de convites/i, 'Já existem 10 convites pendentes. Revogue algum para criar outro.'],
-    [/única pessoa/i, 'Você é a única pessoa da família.'],
+    [/não está em uma família/i, 'Você não está em uma família.'],
     [/pelo menos um responsável/i, 'A família precisa de pelo menos um responsável.'],
     [/não está na família/i, 'Essa pessoa não está mais na família.'],
   ];
@@ -53,14 +56,36 @@ function erroFamilia(e) {
 
 /* ---------------- Quem alterou ---------------- */
 
-/** Linha "Alterado por Fulana em 08/11 às 14:32" (só aparece em família com 2+ pessoas). */
+/** Linha "Alterado por Fulana em 08/11 às 14:32" (só em registros da família, com 2+ pessoas). */
 function autorInfo(id) {
-  if (!id || membros().length < 2) return '';
+  if (!id || membros().length < 2 || meta?.fam?.[id] !== familia.id) return '';
   const a = meta?.autores?.[id];
   if (!a?.by) return '';
   const quem = a.by === minhaConta() ? 'você' : (membros().find((m) => m.user_id === a.by)?.nome || 'alguém que saiu da família');
   const d = new Date(a.at);
   return `<p class="autor-line">${icon('pencil', { size: 14 })}<span>Alterado por <b>${esc(quem)}</b> em ${dataCurta(a.at)} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span></p>`;
+}
+
+/* ---------------- Pet: "só meu" ou da família ---------------- */
+
+/** Etiqueta no perfil do pet (só aparece para quem está numa família). */
+function petEspacoTag(p) {
+  if (!familia || !p) return '';
+  return petDaFamilia(p.id)
+    ? `<span class="espaco-tag fam">${icon('users', { size: 14 })}Família</span>`
+    : `<span class="espaco-tag">${icon('lock', { size: 14 })}Só meu</span>`;
+}
+
+/** Botão "Compartilhar com a família" no perfil de um pet "só meu". */
+function petCompartilharBtn(p) {
+  if (!familia || !p || petDaFamilia(p.id)) return '';
+  return `<button type="button" class="btn plain block compartilhar-pet" data-action="fam-compartilhar-pet" data-id="${esc(p.id)}">${icon('users', { size: 18 })}Compartilhar com a família</button>`;
+}
+
+/** Caixa no cadastro de um pet novo. */
+function campoCompartilharNovoPet() {
+  if (!familia) return '';
+  return `<label class="check-field"><input type="checkbox" name="compartilhar" checked> Compartilhar com a família “${esc(familia.nome)}”</label>`;
 }
 
 /* ---------------- Menu e tela Família ---------------- */
@@ -72,16 +97,15 @@ function avatarMembro(m, size = '') {
 function familiaMenuRow() {
   if (!isLoggedIn()) return '';
   const n = membros().length;
-  const sub = n > 1 ? `${n} pessoas · você é ${souResponsavel() ? 'responsável' : 'membro'}` : 'Compartilhe os pets com quem cuida junto';
+  const sub = familia ? `${esc(familia.nome)} · ${plural(n, 'pessoa', 'pessoas')}` : 'Compartilhe pets com quem cuida junto';
   return menuRow('menu-familia', 'users', 'Família', sub);
 }
 
 const familiaAberta = () => sheet.open && document.getElementById('sheet-title')?.textContent === 'Família';
 
 async function atualizarFamilia() {
-  const f = await remote.rpc('minha_familia');
-  setFamilia(f);
-  return f;
+  setEspacos(await remote.rpc('meus_espacos'));
+  return familia;
 }
 
 function familiaSheet({ recarregar = true } = {}) {
@@ -90,14 +114,23 @@ function familiaSheet({ recarregar = true } = {}) {
   const resp = souResponsavel();
   const ms = membros();
   const convites = f?.convites || [];
-  const conteudo = !f ? '<p class="hint">Carregando sua família…</p>' : `
+  const soMeus = petsSoMeus();
+  const conteudo = !f ? `
+    <div class="menu familia">
+      <div class="fam-vazia">
+        <span class="convite-ico">${icon('users', { size: 32 })}</span>
+        <b>Cuide dos pets junto com alguém</b>
+        <p>Crie uma família e convide quem cuida com você. Você escolhe quais pets compartilhar; os outros continuam só seus.</p>
+      </div>
+      <button type="button" class="btn" data-action="fam-convidar">${icon('user-plus', { size: 18 })}Criar família e convidar</button>
+    </div>` : `
     <div class="menu familia">
       <div class="fam-head">
         <span class="about-logo">${icon('users', { size: 26 })}</span>
         <div class="row-body"><b>${esc(f.nome)}</b><span>${ms.length === 1 ? 'Só você por enquanto' : plural(ms.length, 'pessoa', 'pessoas')}</span></div>
         ${resp ? `<button type="button" class="icon-btn ghost" data-action="fam-renomear" aria-label="Renomear a família">${icon('pencil', { size: 18 })}</button>` : ''}
       </div>
-      <p>Todos da família veem e editam os mesmos pets, cuidados, pesos, gastos e ração.</p>
+      <p>Todos da família veem e editam os pets compartilhados. Pets marcados como “Só meu” continuam só seus.</p>
 
       <h3 class="menu-title">${icon('users', { size: 18 })}Pessoas</h3>
       <div class="menu-list">${ms.map((m) => membroRow(m, eu, resp)).join('')}</div>
@@ -110,13 +143,17 @@ function familiaSheet({ recarregar = true } = {}) {
         <h3 class="menu-title">${icon('link', { size: 18 })}Convites pendentes</h3>
         <div class="menu-list">${convites.map(conviteRow).join('')}</div>` : ''}
 
-      ${ms.length > 1 ? `<div class="menu-list fam-sair">${menuRow('fam-sair', 'log-out', 'Sair da família', 'Os pets continuam com a família', { danger: true, chevron: false })}</div>` : ''}
+      ${soMeus.length ? `<div class="menu-list">${menuRow('fam-compartilhar', 'paw-print', 'Compartilhar meus pets', `${plural(soMeus.length, 'pet só seu', 'pets só seus')}: ${soMeus.map((p) => p.nome).join(', ')}`)}</div>` : ''}
+
+      <div class="menu-list fam-sair">${ms.length > 1
+        ? menuRow('fam-sair', 'log-out', 'Sair da família', 'Os pets compartilhados continuam com a família', { danger: true, chevron: false })
+        : menuRow('fam-sair', 'log-out', 'Desfazer a família', 'Os pets da família voltam a ser só seus', { danger: true, chevron: false })}</div>
     </div>`;
   openSheet('Família', conteudo, null, { back: profileMenu });
   if (recarregar) {
     atualizarFamilia()
       .then(() => { if (familiaAberta()) familiaSheet({ recarregar: false }); })
-      .catch(() => { if (!familia && familiaAberta()) toast('Sem conexão: não consegui carregar a família.'); });
+      .catch(() => {});
   }
 }
 
@@ -159,7 +196,7 @@ function membroSheet(userId) {
         ${m.papel === 'membro'
           ? menuRow('fam-papel', 'crown', 'Tornar responsável', 'Poderá convidar e remover pessoas', { chevron: false, data: { id: m.user_id, papel: 'responsavel' } })
           : (outroResp ? menuRow('fam-papel', 'user', 'Tornar membro', 'Deixa de convidar e remover pessoas', { chevron: false, data: { id: m.user_id, papel: 'membro' } }) : '')}
-        ${menuRow('fam-remover', 'user-x', 'Remover da família', 'Perde o acesso aos pets na hora', { danger: true, chevron: false, data: { id: m.user_id } })}
+        ${menuRow('fam-remover', 'user-x', 'Remover da família', 'Perde o acesso aos pets da família na hora', { danger: true, chevron: false, data: { id: m.user_id } })}
       </div>
     </div>`, null, { back: () => familiaSheet() });
 }
@@ -176,6 +213,60 @@ function renomearSheet() {
     </form>`, null, { back: () => familiaSheet() });
 }
 
+/* ---------------- Compartilhar pets ---------------- */
+
+/** Escolher pets "só meus" para a família. `criando`: primeiro convite (a família nasce agora). */
+function compartilharSheet({ criando = false } = {}) {
+  const pets = petsSoMeus();
+  openSheet(criando ? 'Criar família' : 'Compartilhar pets', `
+    <form class="form" data-fam="${criando ? 'criar' : 'compartilhar'}" autocomplete="off">
+      <p class="form-note">${criando ? 'Quais pets você quer compartilhar com a família? Dá para compartilhar outros depois.' : 'Escolha os pets que a família vai ver e cuidar junto com você.'}</p>
+      <div class="menu-list pet-escolha">
+        ${pets.map((p) => `
+          <label class="menu-row">
+            ${avatar(p)}
+            <span class="row-body"><span class="row-title">${esc(p.nome)}</span><span class="row-sub">${esc(SPECIES[p.especie]?.label || '')}</span></span>
+            <input type="checkbox" name="pet" value="${esc(p.id)}" ${criando ? 'checked' : ''}>
+          </label>`).join('')}
+      </div>
+      <p class="convite-nota warn">${icon('triangle-alert', { size: 16 })}<span>Depois de compartilhado, o pet é da família: todos veem e editam, e ele não volta a ser só seu.</span></p>
+      <p class="form-error" id="fam-error" role="alert" hidden></p>
+      <div class="actions">
+        <button type="button" class="btn plain" data-action="menu-familia">Cancelar</button>
+        <button class="btn" type="submit">${criando ? 'Criar e convidar' : 'Compartilhar'}</button>
+      </div>
+    </form>`, null, { back: () => familiaSheet() });
+}
+
+/** Envia o que falta. Sem isso, mexer na família poderia perder alterações. */
+async function enviarPendentes() {
+  await syncAndWait();
+  if (await hasPendingChanges()) {
+    toast('Não consegui enviar suas alterações. Verifique a internet e tente de novo.');
+    return false;
+  }
+  return true;
+}
+
+async function compartilharPets(ids) {
+  if (!ids.length) return 0;
+  if (!(await enviarPendentes())) throw new Error('sem conexão');
+  await remote.rpc('compartilhar_pets', { p_ids: ids });
+  await syncAndWait();
+  render();
+  return ids.length;
+}
+
+async function compartilharUmPet(id) {
+  const p = getPet(id);
+  if (!p || !familia) return;
+  if (!confirm(`Compartilhar ${p.nome} com a família “${familia.nome}”?\n\nTodos da família vão ver e editar ${p.nome}, com cuidados, pesos, ração, gastos e anexos. Não dá para voltar a ser só seu.`)) return;
+  try {
+    await compartilharPets([id]);
+    toast(`${p.nome} agora é da família`);
+  } catch (e) { toast(erroFamilia(e)); }
+}
+
 /* ---------------- Convidar ---------------- */
 
 const linkConvite = (token) => `${location.origin}${location.pathname}#/convite/${token}`;
@@ -190,48 +281,42 @@ function conviteSheet(token, expira) {
       <a class="btn" href="https://wa.me/?text=${encodeURIComponent(texto)}" target="_blank" rel="noopener">${icon('message-circle', { size: 18 })}Enviar pelo WhatsApp</a>
       <div class="${navigator.share ? 'two' : 'menu'}">
         <button type="button" class="btn plain" data-action="fam-copiar" data-text="${esc(link)}">${icon('copy', { size: 18 })}Copiar link</button>
-        ${navigator.share ? `<button type="button" class="btn plain" data-action="fam-compartilhar" data-text="${esc(texto)}">${icon('share-2', { size: 18 })}Compartilhar</button>` : ''}
+        ${navigator.share ? `<button type="button" class="btn plain" data-action="fam-compartilhar-link" data-text="${esc(texto)}">${icon('share-2', { size: 18 })}Compartilhar</button>` : ''}
       </div>
       <p class="form-hint">Cada link serve para uma pessoa e vale por 7 dias. Você pode cancelá-lo em Família.</p>
     </div>`, null, { back: () => familiaSheet() });
 }
 
+async function criarConvite() {
+  const c = await remote.rpc('criar_convite');
+  await atualizarFamilia().catch(() => {});
+  conviteSheet(c.token, c.expira_em);
+}
+
 async function convidar(btn) {
+  // primeira vez: a família nasce agora; antes, a pessoa escolhe os pets
+  if (!familia && petsSoMeus().length) { compartilharSheet({ criando: true }); return; }
   btn.disabled = true;
-  try {
-    const c = await remote.rpc('criar_convite');
-    atualizarFamilia().catch(() => {});
-    conviteSheet(c.token, c.expira_em);
-  } catch (e) {
-    toast(erroFamilia(e));
-    btn.disabled = false;
-  }
+  try { await criarConvite(); } catch (e) { toast(erroFamilia(e)); btn.disabled = false; }
 }
 
 /* ---------------- Sair, remover, papel ---------------- */
 
-/** Envia o que falta. Sem isso, trocar de família perderia alterações. */
-async function enviarPendentes() {
-  await syncAndWait();
-  if (await hasPendingChanges()) {
-    toast('Não consegui enviar suas alterações. Verifique a internet e tente de novo.');
-    return false;
-  }
-  return true;
-}
-
 async function sairDaFamilia() {
   const nome = familia?.nome || 'família';
-  if (!confirm(`Sair da família “${nome}”?\n\nOs pets continuam com a família e os dados dela serão apagados deste aparelho. Você começa uma família nova, vazia.`)) return;
+  const ultimo = membros().length <= 1;
+  const msg = ultimo
+    ? `Desfazer a família “${nome}”?\n\nOs pets da família voltam a ser só seus e os convites deixam de funcionar.`
+    : `Sair da família “${nome}”?\n\nOs pets compartilhados continuam com a família e saem deste aparelho. Seus pets “só meus” continuam com você.`;
+  if (!confirm(msg)) return;
   try {
     if (!(await enviarPendentes())) return;
     trocaDeFamiliaEsperada = true;
     await remote.rpc('sair_da_familia');
     closeSheet();
-    await wipeLocal();
-    location.hash = '#/inicio';
     await syncAndWait();
-    toast(`Você saiu da família “${nome}”.`);
+    render();
+    toast(ultimo ? 'Família desfeita. Os pets voltaram a ser só seus.' : `Você saiu da família “${nome}”.`);
   } catch (e) {
     trocaDeFamiliaEsperada = false;
     toast(erroFamilia(e));
@@ -240,7 +325,7 @@ async function sairDaFamilia() {
 
 async function removerMembro(userId) {
   const m = membros().find((x) => x.user_id === userId);
-  if (!m || !confirm(`Remover ${m.nome} da família?\n\n${m.nome} perde o acesso aos pets na hora. Os pets e tudo o que foi cadastrado continuam com a família.`)) return;
+  if (!m || !confirm(`Remover ${m.nome} da família?\n\n${m.nome} perde o acesso aos pets da família na hora. Os pets e tudo o que foi cadastrado neles continuam com a família.`)) return;
   try {
     await remote.rpc('remover_membro', { p_user: userId });
     await atualizarFamilia();
@@ -270,7 +355,9 @@ async function revogarConvite(token) {
 
 /* ---------------- Tela do convite (#/convite/<token>) ---------------- */
 
-const conviteUI = { token: null, dados: null, erro: '', carregando: false, levar: true, enviando: false };
+const conviteUI = { token: null, dados: null, erro: '', carregando: false, enviando: false };
+// abrir o link de novo sempre confere a situação atual do convite
+window.addEventListener('hashchange', () => { if (route().name === 'convite' && !conviteUI.enviando) { conviteUI.token = null; render(); } });
 
 async function carregarConvite() {
   const token = conviteUI.token;
@@ -290,7 +377,7 @@ async function carregarConvite() {
 
 function viewConvite(token) {
   token = String(token || '').toLowerCase();
-  if (conviteUI.token !== token) Object.assign(conviteUI, { token, dados: null, erro: '', carregando: false, levar: true, enviando: false });
+  if (conviteUI.token !== token) Object.assign(conviteUI, { token, dados: null, erro: '', carregando: false, enviando: false });
   if (!conviteUI.dados && !conviteUI.carregando && !conviteUI.erro) setTimeout(carregarConvite, 0);
 
   const casca = (corpo) => `
@@ -314,76 +401,26 @@ function viewConvite(token) {
       `<button type="button" class="btn" data-action="menu-familia">Ver minha família</button><button type="button" class="link-btn" data-action="convite-recusar">Agora não</button>`);
   }
 
-  const pets = d.meus_pets || [];
-  const repetidos = pets.filter((p) => p.repetido);
-  const levar = conviteUI.levar;
-  const escolha = !pets.length ? '' : `
-    <div class="convite-pets">
-      <p class="convite-q">Você tem ${plural(pets.length, 'pet', 'pets')}: <b>${esc(listaNomes(pets.map((p) => p.nome)))}</b>. Quer levar para a família?</p>
-      <div class="seg" role="group" aria-label="Levar meus pets">
-        <button type="button" data-action="convite-levar" data-v="1" aria-pressed="${levar}">Levar meus pets</button>
-        <button type="button" data-action="convite-levar" data-v="0" aria-pressed="${!levar}">Não levar</button>
-      </div>
-      ${levar
-        ? `<p class="convite-nota">${icon('check', { size: 16 })}<span>Vão junto com cuidados, pesos, ração, gastos e anexos.</span></p>
-           ${repetidos.length ? `<p class="convite-nota warn">${icon('triangle-alert', { size: 16 })}<span><b>${esc(listaNomes(repetidos.map((p) => p.nome)))}</b> já ${repetidos.length > 1 ? 'existem' : 'existe'} na família e não ${repetidos.length > 1 ? 'serão trazidos' : 'será trazido'}. ${repetidos.length > 1 ? 'Os seus' : 'O seu'} e tudo ligado a ${repetidos.length > 1 ? 'eles' : 'ele'} serão apagados.</span></p>` : ''}`
-        : `<p class="convite-nota warn">${icon('triangle-alert', { size: 16 })}<span>Seus pets e tudo deles (cuidados, pesos, ração, gastos e anexos) serão apagados. Você passa a ver só os pets da família.</span></p>`}
-    </div>`;
-
+  const meus = db.pets.length;
   return casca(`
     <div class="convite-ico">${icon('users', { size: 34 })}</div>
     <h2>Você foi convidado(a)!</h2>
-    <p><b>${esc(d.convidado_por || 'Alguém')}</b> convidou você para a família ${fam} no Miaumigo (${plural(Number(d.membros) || 1, 'pessoa', 'pessoas')}).</p>
-    <p class="convite-sub">Na família, todos veem e editam os mesmos pets, cuidados, pesos, gastos e ração. Vale até ${dataCurta(d.expira_em)}.</p>
-    ${escolha}
+    <p><b>${esc(d.convidado_por || 'Alguém')}</b> convidou você para a família ${fam} no Miaumigo.</p>
+    <p class="convite-sub">Na família, todos veem e editam os pets compartilhados: cuidados, pesos, gastos e ração.</p>
+    ${meus ? `<p class="convite-nota">${icon('lock', { size: 16 })}<span>${meus === 1 ? `${esc(db.pets[0].nome)} continua só seu` : `Seus ${meus} pets continuam só seus`}. Você pode compartilhar com a família quando quiser, no perfil do pet.</span></p>` : ''}
     <button type="button" class="btn block ${conviteUI.enviando ? 'loading' : ''}" data-action="convite-aceitar" ${conviteUI.enviando ? 'disabled' : ''}>${conviteUI.enviando ? 'Entrando…' : 'Entrar na família'}</button>
     <button type="button" class="link-btn" data-action="convite-recusar" ${conviteUI.enviando ? 'disabled' : ''}>Agora não</button>`);
-}
-
-/** Apaga no aparelho os pets e tudo ligado a eles (cuidados, anexos, pesos, gastos, ração). */
-async function apagarPetsLocais(ids) {
-  const set = new Set(ids);
-  const careIds = db.cuidados.filter((c) => set.has(c.petId)).map((c) => c.id);
-  await deleteAttachmentsOf(careIds);
-  db.pets = db.pets.filter((p) => !set.has(p.id));
-  db.cuidados = db.cuidados.filter((c) => !set.has(c.petId));
-  db.pesos = db.pesos.filter((w) => !set.has(w.petId));
-  db.gastos = db.gastos.filter((g) => !set.has(g.petId));
-  db.racoes = db.racoes.filter((r) => !set.has(r.petId));
-  persistLocal();
 }
 
 async function aceitarConvite() {
   const d = conviteUI.dados;
   if (!d || d.status !== 'valido' || conviteUI.enviando) return;
-  const token = conviteUI.token;
-  const pets = d.meus_pets || [];
-  const levar = pets.length ? conviteUI.levar : true;
-  const apagar = levar ? pets.filter((p) => p.repetido) : pets;
-  let msg = `Entrar na família “${d.familia}”?`;
-  if (!levar) msg += `\n\nSeus pets (${listaNomes(pets.map((p) => p.nome))}) e tudo deles serão apagados. Não dá para desfazer.`;
-  else if (apagar.length) msg += `\n\n${listaNomes(apagar.map((p) => p.nome))} já existe na família: o seu e tudo ligado a ele serão apagados. Não dá para desfazer.`;
-  if (!confirm(msg)) return;
-
   conviteUI.enviando = true;
   render();
   try {
-    // 1. tudo o que está no aparelho vai para a nuvem
-    if (!(await enviarPendentes())) return;
-    // 2. o que não vai junto é apagado (no aparelho e, sincronizando, na nuvem e nos arquivos)
-    if (apagar.length || !levar) {
-      if (!levar) {
-        await IDB.clear().catch(() => {});
-        Object.assign(db, { pets: [], cuidados: [], pesos: [], gastos: [], racoes: [] });
-        persistLocal();
-      } else await apagarPetsLocais(apagar.map((p) => p.id));
-      if (!(await enviarPendentes())) return;
-    }
-    // 3. entra na família (o banco confere tudo de novo)
     trocaDeFamiliaEsperada = true;
-    await remote.rpc('aceitar_convite', { p_token: token, p_levar_pets: levar });
+    await remote.rpc('aceitar_convite', { p_token: conviteUI.token });
     guardarConvite('');
-    await wipeLocal();
     location.hash = '#/inicio';
     await syncAndWait();
     toast(`Bem-vindo(a) à família “${d.familia}”!`);
@@ -415,13 +452,14 @@ document.addEventListener('click', (e) => {
     case 'fam-papel': alterarPapel(el.dataset.id, el.dataset.papel); break;
     case 'fam-renomear': renomearSheet(); break;
     case 'fam-sair': sairDaFamilia(); break;
+    case 'fam-compartilhar': compartilharSheet(); break;
+    case 'fam-compartilhar-pet': compartilharUmPet(el.dataset.id); break;
     case 'fam-copiar':
       navigator.clipboard?.writeText(el.dataset.text).then(() => toast('Link copiado'), () => toast('Não consegui copiar. Segure o link para copiar.'));
       break;
-    case 'fam-compartilhar':
+    case 'fam-compartilhar-link':
       navigator.share?.({ title: 'Convite para a família no Miaumigo', text: el.dataset.text }).catch(() => {});
       break;
-    case 'convite-levar': conviteUI.levar = el.dataset.v === '1'; render(); break;
     case 'convite-aceitar': aceitarConvite(); break;
     case 'convite-tentar': conviteUI.erro = ''; render(); break;
     case 'convite-recusar':
@@ -434,7 +472,7 @@ document.addEventListener('click', (e) => {
 
 document.addEventListener('focusin', (e) => { if (e.target.matches?.('[data-select-all]')) e.target.select(); });
 
-// formulário de renomear (não usa o onSubmit genérico das folhas, que salva o app)
+// formulários da família (não usam o onSubmit genérico das folhas, que salva o app)
 document.addEventListener('submit', async (e) => {
   const form = e.target.closest('form[data-fam]');
   if (!form) return;
@@ -444,11 +482,28 @@ document.addEventListener('submit', async (e) => {
   const err = form.querySelector('#fam-error');
   btn.disabled = true;
   try {
-    await remote.rpc('renomear_familia', { p_nome: form.nome.value.trim() });
-    await atualizarFamilia();
-    if (db.ownerNome !== familia.nome) { db.ownerNome = familia.nome; persistLocal(); }
-    familiaSheet({ recarregar: false });
-    toast('Nome da família atualizado');
+    const tipo = form.dataset.fam;
+    if (tipo === 'renomear') {
+      await remote.rpc('renomear_familia', { p_nome: form.nome.value.trim() });
+      await atualizarFamilia();
+      familiaSheet({ recarregar: false });
+      toast('Nome da família atualizado');
+    } else {
+      const ids = [...form.querySelectorAll('input[name=pet]:checked')].map((i) => i.value);
+      if (tipo === 'compartilhar' && !ids.length) throw new Error('Escolha pelo menos um pet.');
+      if (tipo === 'criar') {
+        if (!(await enviarPendentes())) throw new Error('Sem conexão. Tente de novo.');
+        const c = await remote.rpc('criar_convite');      // a família nasce aqui
+        await atualizarFamilia();
+        if (ids.length) await compartilharPets(ids);
+        conviteSheet(c.token, c.expira_em);
+        toast(ids.length ? `Família criada com ${plural(ids.length, 'pet', 'pets')}` : 'Família criada');
+      } else {
+        const n = await compartilharPets(ids);
+        familiaSheet({ recarregar: false });
+        toast(n === 1 ? 'Pet compartilhado com a família' : `${n} pets compartilhados com a família`);
+      }
+    }
   } catch (ex) {
     err.textContent = erroFamilia(ex);
     err.hidden = false;
