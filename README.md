@@ -41,7 +41,7 @@ Opcional: sem conta, tudo funciona só no aparelho. Com conta, os dados viram um
 - **Configurar**: siga [`supabase/CONFIGURAR.md`](supabase/CONFIGURAR.md) (criar projeto, rodar [`schema.sql`](supabase/schema.sql), ajustar o login) e preencha `config.js` com a URL e a chave publicável.
 - **Como funciona**: offline primeiro. Sincroniza ao abrir o app, ~2,5 s depois de cada alteração, ao voltar para o app, ao reconectar e a cada minuto. Baixa o que mudou na nuvem, envia o que mudou no aparelho (inclusive exclusões) e sincroniza os anexos no Storage.
 - **Conflito**: se o mesmo registro mudar nos dois lados, vale o do aparelho que está sincronizando.
-- **Segurança**: regras de acesso (RLS) no banco e no Storage; cada pessoa só vê os próprios dados. A chave no app é a publicável (pública); a secret/service_role nunca vai para o app.
+- **Segurança**: regras de acesso (RLS) no banco e no Storage; cada pessoa só vê os dados da própria família. A chave no app é a publicável (pública); a secret/service_role nunca vai para o app.
 - **Apagar todos os dados** com a conta conectada apaga só o aparelho e sai da conta; a nuvem fica intacta.
 - Biblioteca: `@supabase/supabase-js` 2.118.0, embutida em `vendor/` para o app abrir offline.
 
@@ -67,6 +67,17 @@ Opcional: sem conta, tudo funciona só no aparelho. Com conta, os dados viram um
 - O avatar no topo do início abre o menu: Configurações (uma tela única com Lembretes, Aparência, Calendário e Conta), Instalar o app, Painel de uso (só administradores), Ajuda e sobre, Sair.
 - "Baixar meus dados" (Configurações → Conta) substitui o backup/importação.
 - **Instalar o app** (`install.js`): no Android/computador abre a janela nativa de instalação; no iPhone mostra o passo a passo do Safari; em navegadores internos (WhatsApp, Instagram) orienta a abrir no navegador.
+
+## Família (v1.5)
+
+Os pets são da **família**, não da pessoa. Toda conta começa numa família só dela.
+
+- **Banco** ([`supabase/familia.sql`](supabase/familia.sql), roda depois do `schema.sql`): tabelas `familias`, `familia_membros` (papel `responsavel` ou `membro`, uma família por pessoa) e `convites` (link de uso único, expira em 7 dias, revogável). `registros` tem `familia_id` (chave: família + id) e `updated_by` (quem alterou, definido pelo servidor).
+- **Regras de acesso**: só membros leem e alteram os registros da família. Arquivos novos em `anexos/<família>/<anexo>`; um arquivo pode ser lido/apagado se estiver na pasta da família ou se um anexo da família apontar para ele (cobre os arquivos antigos em `<usuário>/`). As tabelas de família não têm acesso direto pela API: tudo passa pelas funções `minha_familia`, `criar_convite`, `revogar_convite`, `ver_convite`, `aceitar_convite`, `sair_da_familia`, `remover_membro`, `alterar_papel`, `renomear_familia`.
+- **App** (`familia.js`): Minha conta → Família (membros, convidar pelo WhatsApp, convites pendentes, remover, tornar responsável, sair). O link `#/convite/<token>` é guardado antes do login. Quem já divide uma família precisa sair dela para entrar em outra. Ao aceitar, a pessoa escolhe levar ou não os pets; pets que já existem na família (mesmo nome, sem diferenciar maiúsculas/acentos, ou mesmo registro) não vão e são apagados com o que estiver ligado a eles.
+- **Sincronização**: cada sincronização começa por `minha_familia()`. Os dados do aparelho pertencem a uma família (`db.owner`); se ela mudar (saiu, foi removido, outra conta), o aparelho é limpo e baixa a família atual. Editar mostra "Alterado por Fulana em ..." quando a família tem 2+ pessoas.
+- **Painel de uso**: famílias, compartilhadas, pessoas nelas, convites criados/aceitos/cancelados em 30 dias.
+- **Testes**: `window.__setSyncRemote(servidorSimulado)` aceita um servidor com `userId`, `rpc`, `pull(familiaId, desde)`, `upsert`, `upload`, `download` e `remove`.
 
 ## Manter o Supabase ativo
 

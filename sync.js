@@ -28,9 +28,21 @@ const syncState = { status: 'idle', error: '', lastSync: null, running: false, a
 function loadMeta() {
   try { return JSON.parse(localStorage.getItem(SYNC_KEY)) || null; } catch { return null; }
 }
-function freshMeta(userId) {
-  return { userId, lastPull: '1970-01-01T00:00:00Z', hashes: {}, anexos: {} };
+function freshMeta(familiaId, userId) {
+  return { familiaId, userId, lastPull: '1970-01-01T00:00:00Z', hashes: {}, anexos: {}, autores: {} };
 }
+
+/* ---------------- Família ----------------
+   Os dados pertencem à FAMÍLIA, não à pessoa. `familia` é a resposta de
+   minha_familia() no Supabase (id, nome, papel, membros, convites) e fica
+   guardada no aparelho para aparecer mesmo sem internet. */
+const FAMILIA_KEY = 'miaumigo:familia';
+let familia = (() => { try { return JSON.parse(localStorage.getItem(FAMILIA_KEY)) || null; } catch { return null; } })();
+function setFamilia(f) {
+  familia = f;
+  try { if (f) localStorage.setItem(FAMILIA_KEY, JSON.stringify(f)); else localStorage.removeItem(FAMILIA_KEY); } catch { /* cheio */ }
+}
+let trocaDeFamiliaEsperada = false; // aceitar convite / sair: o próprio app trocou de família
 let meta = loadMeta();
 function saveMeta() {
   try { localStorage.setItem(SYNC_KEY, JSON.stringify(meta)); } catch { /* cheio */ }
@@ -62,11 +74,17 @@ function hashOf(obj) {
 
 const supabaseRemote = {
   userId: () => session?.user?.id,
-  async pull(since) {
+  async rpc(fn, args = {}) {
+    const { data, error } = await sb.rpc(fn, args);
+    if (error) throw error;
+    return data;
+  },
+  async pull(familiaId, since) {
     const rows = [];
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await sb.from('registros')
-        .select('id,tipo,dados,excluido,updated_at')
+        .select('id,tipo,dados,excluido,updated_at,updated_by')
+        .eq('familia_id', familiaId)
         .gt('updated_at', since)
         .order('updated_at', { ascending: true })
         .range(from, from + PAGE - 1);
@@ -77,7 +95,7 @@ const supabaseRemote = {
   },
   async upsert(rows) {
     for (let i = 0; i < rows.length; i += 500) {
-      const { error } = await sb.from('registros').upsert(rows.slice(i, i + 500), { onConflict: 'user_id,id' });
+      const { error } = await sb.from('registros').upsert(rows.slice(i, i + 500), { onConflict: 'familia_id,id' });
       if (error) throw error;
     }
   },
@@ -101,10 +119,11 @@ let remote = supabaseRemote;
 const isLoggedIn = () => !!remote.userId();
 
 /* ---------------- Dono dos dados do aparelho ----------------
-   Os dados locais pertencem a UMA conta (db.owner). Se outra conta entrar
-   neste aparelho, os dados locais são descartados (nunca enviados) e os
-   da nova conta são baixados da nuvem. Isso impede que dados de uma
-   pessoa vazem para a conta de outra. */
+   Os dados locais pertencem a UMA família (db.owner = id da família,
+   db.ownerUser = quem estava logado). Se a família mudar (outra conta
+   entrou, a pessoa saiu ou foi removida da família), os dados locais são
+   apagados (nunca enviados) e os da família atual são baixados da nuvem.
+   Isso impede que dados de uma família vazem para outra. */
 
 const localDataCount = async () => {
   const n = Object.values(COLLECTIONS).reduce((s, name) => s + db[name].length, 0);
@@ -127,19 +146,34 @@ async function wipeLocal() {
 
 let ownerPromptOpen = false;
 
-/** Garante que os dados locais são da conta `uid`. Retorna false se precisa perguntar ao usuário. */
-async function ensureOwner(uid) {
-  if (db.owner === uid) return true;
-  const claim = () => { db.owner = uid; persistLocal(); return true; };
-  if (db.owner) { await wipeLocal(); return claim(); }                    // dados de outra conta
-  if (meta?.userId === uid) return claim();                                // versão antiga, já sincronizada com esta conta
-  if (meta?.userId) { await wipeLocal(); return claim(); }                 // versão antiga, de outra conta
+/** Garante que os dados locais são da família `fam` (da conta `uid`). Retorna false se precisa perguntar ao usuário. */
+async function ensureOwner(fam, uid) {
+  const fid = fam.id;
+  if (db.owner === fid && db.ownerUser === uid) return true;
+  const claim = () => { db.owner = fid; db.ownerUser = uid; persistLocal(); return true; };
+  const herdaMeta = () => { if (meta?.userId === uid && !meta.familiaId) { meta.familiaId = fid; meta.autores ||= {}; saveMeta(); } };
+  const sozinho = (fam.membros || []).length <= 1;
+
+  if (db.owner === fid) return claim();                                    // mesma família, outra pessoa dela: os dados são da família
+  if (db.owner && db.owner === uid) {                                      // versão 1.4: dono era a própria conta
+    if (sozinho) { herdaMeta(); return claim(); }                          // a família dela é a conta migrada: mantém tudo
+    await wipeLocal(); return claim();
+  }
+  if (db.owner) {                                                          // outra família (ou outra conta)
+    const saiu = db.ownerUser === uid && !trocaDeFamiliaEsperada;
+    const nomeAntigo = db.ownerNome;
+    await wipeLocal();
+    if (saiu) toast(`Você não faz mais parte da família${nomeAntigo ? ` “${nomeAntigo}”` : ''}. Os dados dela foram apagados deste aparelho.`);
+    return claim();
+  }
+  if (meta?.userId === uid && sozinho) { herdaMeta(); return claim(); }    // versão antiga, já sincronizada com esta conta
+  if (meta?.userId || meta?.familiaId) { await wipeLocal(); return claim(); } // versão antiga, de outra conta
   if (!(await localDataCount())) return claim();                           // aparelho vazio
-  askAdopt(uid);                                                           // dados sem dono: a pessoa decide
+  askAdopt(fid, uid);                                                      // dados sem dono: a pessoa decide
   return false;
 }
 
-function askAdopt(uid) {
+function askAdopt(fid, uid) {
   if (ownerPromptOpen) return;
   ownerPromptOpen = true;
   const nomes = db.pets.map((p) => p.nome).slice(0, 4).join(', ');
@@ -152,8 +186,8 @@ function askAdopt(uid) {
     <div class="menu">
       <p>Encontramos dados salvos neste aparelho que não estão ligados a nenhuma conta${resumo ? `: <b>${resumo}</b>` : ''}.</p>
       <p>Se forem seus, junte à sua conta. Se forem de outra pessoa, descarte: eles não serão enviados.</p>
-      <button class="btn" data-action="adopt-local" data-uid="${esc(uid)}">${icon('cloud', { size: 18 })}Juntar à minha conta</button>
-      <button class="btn danger" data-action="discard-local" data-uid="${esc(uid)}">${icon('trash-2', { size: 18 })}Descartar dados do aparelho</button>
+      <button class="btn" data-action="adopt-local" data-uid="${esc(uid)}" data-fid="${esc(fid)}">${icon('cloud', { size: 18 })}Juntar à minha conta</button>
+      <button class="btn danger" data-action="discard-local" data-uid="${esc(uid)}" data-fid="${esc(fid)}">${icon('trash-2', { size: 18 })}Descartar dados do aparelho</button>
     </div>`, null);
 }
 
@@ -190,15 +224,24 @@ async function syncNow() {
   setSyncStatus('syncing');
   try {
     const uid = remote.userId();
-    if (!(await ensureOwner(uid))) { setSyncStatus('idle'); return; } // aguardando a pessoa decidir
-    if (!meta || meta.userId !== uid) { meta = freshMeta(uid); saveMeta(); }
+    /* 0. Família atual (decide de quem são os dados) */
+    const fam = await remote.rpc('minha_familia');
+    if (uid !== remote.userId()) { setSyncStatus('idle'); return; } // a conta mudou durante a chamada
+    setFamilia(fam);
+    if (!(await ensureOwner(fam, uid))) { setSyncStatus('idle'); return; } // aguardando a pessoa decidir
+    trocaDeFamiliaEsperada = false;
+    if (db.ownerNome !== fam.nome) { db.ownerNome = fam.nome; persistLocal(); }
+    const fid = fam.id;
+    if (!meta || meta.familiaId !== fid) { meta = freshMeta(fid, uid); saveMeta(); }
+    meta.autores ||= {};
 
     /* 1. Pull */
-    const rows = await remote.pull(meta.lastPull);
+    const rows = await remote.pull(fid, meta.lastPull);
     let changedLocal = false;
     const remoteAnexos = [];
     for (const row of rows) {
       if (row.updated_at > meta.lastPull) meta.lastPull = row.updated_at;
+      if (row.updated_by) meta.autores[row.id] = { by: row.updated_by, at: row.updated_at };
       if (row.tipo === 'anexo') { remoteAnexos.push(row); continue; }
       const coll = db[COLLECTIONS[row.tipo]];
       if (!coll) continue;
@@ -228,24 +271,25 @@ async function syncNow() {
       for (const rec of db[name]) {
         present.add(rec.id);
         const h = hashOf(rec);
-        if (meta.hashes[rec.id]?.h !== h) out.push({ row: { user_id: uid, id: rec.id, tipo, dados: rec, excluido: false }, h });
+        if (meta.hashes[rec.id]?.h !== h) out.push({ row: { familia_id: fid, id: rec.id, tipo, dados: rec, excluido: false }, h });
       }
     }
     for (const [id, info] of Object.entries(meta.hashes)) {
-      if (!present.has(id)) out.push({ row: { user_id: uid, id, tipo: info.t, dados: {}, excluido: true }, h: null });
+      if (!present.has(id)) out.push({ row: { familia_id: fid, id, tipo: info.t, dados: {}, excluido: true }, h: null });
     }
     if (out.length) {
       await remote.upsert(out.map((o) => o.row));
+      const agora = new Date().toISOString();
       for (const { row, h } of out) {
-        if (h) meta.hashes[row.id] = { h, t: row.tipo };
-        else delete meta.hashes[row.id];
+        if (h) { meta.hashes[row.id] = { h, t: row.tipo }; meta.autores[row.id] = { by: uid, at: agora }; }
+        else { delete meta.hashes[row.id]; delete meta.autores[row.id]; }
       }
     }
     saveMeta();
     if (changedLocal) { persistLocal(); render(); }
 
     /* 3. Anexos */
-    await syncAttachments(uid, remoteAnexos);
+    await syncAttachments(fid, remoteAnexos);
 
     syncState.lastSync = new Date();
     setSyncStatus('ok');
@@ -258,7 +302,7 @@ async function syncNow() {
   }
 }
 
-async function syncAttachments(uid, remoteRows) {
+async function syncAttachments(fid, remoteRows) {
   let local = [];
   try { local = await IDB.all(); } catch { return; } // sem IndexedDB
   const localIds = new Set(local.map((a) => a.id));
@@ -283,10 +327,10 @@ async function syncAttachments(uid, remoteRows) {
   // novos no aparelho
   for (const a of local) {
     if (meta.anexos[a.id]) continue;
-    const path = `${uid}/${a.id}`;
+    const path = `${fid}/${a.id}`;
     await remote.upload(path, a.blob, a.tipo);
     const { blob, ...info } = a;
-    await remote.upsert([{ user_id: uid, id: a.id, tipo: 'anexo', dados: { ...info, path }, excluido: false }]);
+    await remote.upsert([{ familia_id: fid, id: a.id, tipo: 'anexo', dados: { ...info, path }, excluido: false }]);
     meta.anexos[a.id] = { path };
     saveMeta();
   }
@@ -295,7 +339,7 @@ async function syncAttachments(uid, remoteRows) {
   const gone = Object.entries(meta.anexos).filter(([id]) => !localIds.has(id));
   if (gone.length) {
     await remote.remove(gone.map(([, v]) => v.path));
-    await remote.upsert(gone.map(([id]) => ({ user_id: uid, id, tipo: 'anexo', dados: {}, excluido: true })));
+    await remote.upsert(gone.map(([id]) => ({ familia_id: fid, id, tipo: 'anexo', dados: {}, excluido: true })));
     gone.forEach(([id]) => delete meta.anexos[id]);
     saveMeta();
   }
@@ -310,6 +354,15 @@ async function syncAttachments(uid, remoteRows) {
     persistLocal();
     render();
   }
+}
+
+/** Sincroniza e espera terminar (inclusive uma sincronização que já estava rodando). */
+async function syncAndWait() {
+  const idle = async () => { while (syncState.running) await new Promise((r) => setTimeout(r, 150)); };
+  await idle();
+  await syncNow();
+  await idle();
+  return syncState.status === 'ok';
 }
 
 /** Salva no aparelho sem agendar outra sincronização. */
@@ -485,7 +538,9 @@ function viewPainel() {
   const especies = Object.entries(c.pets_por_especie || {}).map(([k, v]) => [SPECIES[k]?.label || k, v, SPECIES[k]?.icon || 'paw-print']).sort((x, y) => y[1] - x[1]);
   const tipos = Object.entries(c.cuidados_por_tipo || {}).map(([k, v]) => [CARE_TYPES[k]?.label || k, v, CARE_TYPES[k]?.icon || 'clipboard-list']).sort((x, y) => y[1] - x[1]);
   const mb = (s.bytes || 0) / 1048576;
-  const media = c.contas_com_pet ? (c.pets / c.contas_com_pet) : 0;
+  const comPet = c.familias_com_pet ?? c.contas_com_pet;
+  const media = comPet ? (c.pets / comPet) : 0;
+  const f = d.familias;
 
   return head + `
     <div class="stats">
@@ -524,13 +579,28 @@ function viewPainel() {
       </div>
     </section>
 
+    ${f ? `
+    <section class="section">
+      <div class="section-head"><h2>Famílias</h2>${f.compartilhadas ? `<span class="tag">até ${fmtN(f.maior)} pessoas</span>` : ''}</div>
+      <div class="stats">
+        <div class="card stat"><div class="num">${fmtN(f.total)}</div><div class="lbl">famílias</div></div>
+        <div class="card stat"><div class="num">${fmtN(f.compartilhadas)}</div><div class="lbl">compartilhadas (2+ pessoas)</div></div>
+        <div class="card stat"><div class="num">${fmtN(f.pessoas_em_compartilhadas)}</div><div class="lbl">pessoas nelas</div></div>
+      </div>
+      <div class="stats" style="margin-top:10px">
+        <div class="card stat"><div class="num">${fmtN(f.convites_30d)}</div><div class="lbl">convites em 30 dias</div></div>
+        <div class="card stat"><div class="num">${fmtN(f.aceitos_30d)}</div><div class="lbl">aceitos</div></div>
+        <div class="card stat"><div class="num">${fmtN(f.revogados_30d)}</div><div class="lbl">cancelados</div></div>
+      </div>
+    </section>` : ''}
+
     <section class="section">
       <div class="section-head"><h2>Como as pessoas entram</h2></div>
       <div class="card">${hbars(provedores)}</div>
     </section>
 
     <section class="section">
-      <div class="section-head"><h2>Conteúdo cadastrado</h2>${media ? `<span class="tag">${media.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} pets por conta</span>` : ''}</div>
+      <div class="section-head"><h2>Conteúdo cadastrado</h2>${media ? `<span class="tag">${media.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} pets por ${c.familias_com_pet !== undefined ? 'família' : 'conta'}</span>` : ''}</div>
       <div class="stats">
         <div class="card stat"><div class="num">${fmtN(c.pets)}</div><div class="lbl">pets</div></div>
         <div class="card stat"><div class="num">${fmtN(c.cuidados)}</div><div class="lbl">cuidados</div></div>
@@ -594,7 +664,7 @@ const GOOGLE_G = `<svg class="g-logo" viewBox="0 0 48 48" aria-hidden="true"><pa
 
 function viewEntrar() {
   if (!syncConfigured) { setTimeout(() => { location.hash = '#/inicio'; }, 0); return ''; }
-  if (isLoggedIn()) { setTimeout(() => { location.hash = '#/inicio'; }, 0); return ''; }
+  if (isLoggedIn()) { setTimeout(() => { location.hash = destinoAposLogin(); }, 0); return ''; }
 
   const titles = { entrar: 'Que bom te ver!', criar: 'Crie sua conta', recuperar: 'Recuperar senha' };
   const subs = {
@@ -614,6 +684,7 @@ function viewEntrar() {
         <h2>${titles[authMode]}</h2>
         <p class="auth-sub">${subs[authMode]}</p>
         ${authNotice ? `<p class="auth-notice" role="status">${icon('mail', { size: 18 })}<span>${esc(authNotice)}</span></p>` : ''}
+        ${!authNotice && typeof conviteGuardado === 'function' && conviteGuardado() ? `<p class="auth-notice" role="status">${icon('users', { size: 18 })}<span>Você recebeu um convite para uma família. Entre ou crie sua conta para aceitar.</span></p>` : ''}
 
         ${!recuperar && googleEnabled() ? `
           <button type="button" class="btn-google" data-action="google-login">${GOOGLE_G}<span>Continuar com o Google</span></button>
@@ -820,7 +891,8 @@ document.addEventListener('click', (e) => {
       if (uid !== remote.userId()) { closeSheet(); break; } // a conta mudou nesse meio-tempo
       const go = async () => {
         if (el.dataset.action === 'discard-local') await wipeLocal();
-        db.owner = uid;
+        db.owner = el.dataset.fid;
+        db.ownerUser = uid;
         persistLocal();
         ownerPromptOpen = false;
         closeSheet();
@@ -865,13 +937,14 @@ if (syncConfigured) {
         try { localStorage.removeItem('miaumigo:semConta'); } catch { /* resto da versão antiga */ }
         const r = route().name;
         if (!s && r !== 'entrar') location.hash = '#/entrar';
-        if (s && r === 'entrar') location.hash = '#/inicio';
+        if (s && r === 'entrar') location.hash = destinoAposLogin();
         splashReady('auth');
       }
       if (s && (event === 'INITIAL_SESSION' || event === 'SIGNED_IN')) checkAdmin();
       if (event === 'SIGNED_OUT') {
         // saiu da conta: os dados do aparelho são apagados e o acesso fica bloqueado
         isAdmin = false;
+        setFamilia(null);
         Object.assign(painel, { dados: null, erro: '', em: null });
         ownerPromptOpen = false;
         closeSheet();
@@ -886,7 +959,7 @@ if (syncConfigured) {
       }
       if (event === 'SIGNED_IN' && !wasLoggedIn) {
         authNotice = '';
-        if (route().name === 'entrar') location.hash = '#/inicio';
+        if (route().name === 'entrar') location.hash = destinoAposLogin();
         toast(`Olá${s?.user?.user_metadata?.name ? `, ${s.user.user_metadata.name.split(' ')[0]}` : ''}! Sincronizando seus dados…`);
       }
       if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') syncNow();
@@ -905,4 +978,4 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) sync
 setInterval(() => { if (!document.hidden) syncNow(); }, 60 * 1000);
 
 /* Apenas para testes: troca o backend por um simulado. */
-window.__setSyncRemote = (r) => { remote = r || supabaseRemote; meta = null; localStorage.removeItem(SYNC_KEY); updateSyncUI(); render(); };
+window.__setSyncRemote = (r) => { remote = r || supabaseRemote; meta = null; localStorage.removeItem(SYNC_KEY); setFamilia(null); updateSyncUI(); render(); };

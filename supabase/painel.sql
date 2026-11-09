@@ -57,9 +57,9 @@ begin
 
     -- "ativo" = a conta sincronizou alguma alteração no período
     'ativos', jsonb_build_object(
-      'd1',  (select count(distinct user_id) from public.registros where updated_at > now() - interval '1 day'),
-      'd7',  (select count(distinct user_id) from public.registros where updated_at > now() - interval '7 days'),
-      'd30', (select count(distinct user_id) from public.registros where updated_at > now() - interval '30 days'),
+      'd1',  (select count(distinct coalesce(updated_by, user_id)) from public.registros where updated_at > now() - interval '1 day'),
+      'd7',  (select count(distinct coalesce(updated_by, user_id)) from public.registros where updated_at > now() - interval '7 days'),
+      'd30', (select count(distinct coalesce(updated_by, user_id)) from public.registros where updated_at > now() - interval '30 days'),
       'login_7d', (select count(*) from auth.users where last_sign_in_at > now() - interval '7 days')
     ),
 
@@ -70,7 +70,7 @@ begin
       'gastos',   (select count(*) from public.registros where tipo = 'gasto'   and not excluido),
       'racoes',   (select count(*) from public.registros where tipo = 'racao'   and not excluido),
       'anexos',   (select count(*) from public.registros where tipo = 'anexo'   and not excluido),
-      'contas_com_pet', (select count(distinct user_id) from public.registros where tipo = 'pet' and not excluido),
+      'familias_com_pet', (select count(distinct familia_id) from public.registros where tipo = 'pet' and not excluido),
       'pets_por_especie', (
         select coalesce(jsonb_object_agg(especie, n), '{}'::jsonb)
         from (select coalesce(dados->>'especie', 'outro') as especie, count(*) as n
@@ -83,6 +83,17 @@ begin
       )
     ),
 
+    -- famílias (Fase 2): compartilhada = 2 pessoas ou mais
+    'familias', jsonb_build_object(
+      'total',         (select count(*) from public.familias),
+      'compartilhadas', (select count(*) from (select familia_id from public.familia_membros group by 1 having count(*) > 1) x),
+      'pessoas_em_compartilhadas', (select coalesce(sum(n), 0) from (select count(*) as n from public.familia_membros group by familia_id having count(*) > 1) x),
+      'maior',         (select coalesce(max(n), 0) from (select count(*) as n from public.familia_membros group by familia_id) x),
+      'convites_30d',  (select count(*) from public.convites where criado_em > now() - interval '30 days'),
+      'aceitos_30d',   (select count(*) from public.convites where usado_em > now() - interval '30 days'),
+      'revogados_30d', (select count(*) from public.convites where revogado_em > now() - interval '30 days')
+    ),
+
     'armazenamento', jsonb_build_object(
       'arquivos', (select count(*) from storage.objects where bucket_id = 'anexos'),
       'bytes',    (select coalesce(sum((metadata->>'size')::bigint), 0) from storage.objects where bucket_id = 'anexos')
@@ -92,7 +103,7 @@ begin
     'serie_30d', (
       select jsonb_agg(jsonb_build_object(
         'dia', d::date,
-        'ativos', (select count(distinct g.user_id) from public.registros g
+        'ativos', (select count(distinct coalesce(g.updated_by, g.user_id)) from public.registros g
                    where (g.updated_at at time zone 'America/Sao_Paulo')::date = d::date),
         'cadastros', (select count(*) from auth.users u
                       where (u.created_at at time zone 'America/Sao_Paulo')::date = d::date)

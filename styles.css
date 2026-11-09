@@ -666,3 +666,37 @@ a.card:active, .pet-card:active, button.row:active, .menu-row:active { transform
 .config-sec + .config-sec { border-top: 1px solid var(--line); }
 .config-sec .menu-title { margin: 0; }
 .config-sec p { margin: 0; }
+
+/* ---------- Família ---------- */
+.fam-head { display: flex; align-items: center; gap: 12px; }
+.fam-head .row-body { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.fam-head b { font-size: 18px; overflow-wrap: anywhere; }
+.fam-head .row-body span { color: var(--muted); font-size: 14px; }
+.menu-row.static { cursor: default; }
+.menu-row.static:active { transform: none; background-color: transparent; }
+.menu-row .row-body { min-width: 0; flex: 1; }
+.menu-row .row-title .tag { margin-left: 4px; }
+.convite-acoes { display: flex; gap: 2px; margin-left: auto; flex: none; }
+.danger-ico { color: var(--warn); }
+.fam-sair { margin-top: 6px; }
+.invite-link { font-size: 14px; color: var(--muted); }
+.autor-line { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--muted); font-size: 13px; }
+.autor-line .ico { flex: none; }
+.autor-line b { color: var(--ink); font-weight: 700; }
+
+/* tela do convite */
+.convite-card { display: flex; flex-direction: column; gap: 12px; padding: 24px 18px; text-align: center; }
+.convite-card h2 { margin: 0; font-size: 22px; }
+.convite-card p { margin: 0; }
+.convite-card .btn { align-self: stretch; }
+.convite-card .link-btn { align-self: center; }
+.convite-ico { width: 72px; height: 72px; margin: 0 auto 2px; border-radius: 50%; background: var(--primary-soft); color: var(--primary); display: grid; place-items: center; }
+.convite-ico.warn { background: var(--warn-soft); color: var(--warn); }
+.convite-sub { color: var(--muted); font-size: 14px; }
+.convite-pets { display: flex; flex-direction: column; gap: 10px; text-align: left; padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--bg); }
+.convite-pets .seg { margin: 0; }
+.convite-q { font-weight: 600; }
+.convite-nota { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; color: var(--muted); }
+.convite-nota .ico { flex: none; margin-top: 2px; color: var(--ok); }
+.convite-nota.warn { color: var(--ink); }
+.convite-nota.warn .ico { color: var(--warn); }

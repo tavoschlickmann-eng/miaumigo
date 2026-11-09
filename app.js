@@ -172,6 +172,8 @@ const petName = (id) => getPet(id)?.nome ?? 'Geral';
 const latestWeight = (petId) => db.pesos.filter((w) => w.petId === petId).sort(byDateDesc)[0];
 const reminderOf = (c) => (c.lembrete === undefined ? 0 : Number(c.lembrete));
 const fullDate = (s) => (s ? parseISO(s).toLocaleDateString('pt-BR') : '');
+/** "Alterado por Fulana em ..." no editar (só em família com 2+ pessoas; familia.js). */
+const autorLinha = (rec) => (rec?.id && typeof autorInfo === 'function' ? autorInfo(rec.id) : '');
 
 /* ---- Ração ---- */
 const activeFood = (petId) => db.racoes.filter((r) => r.petId === petId && !r.fim).sort((a, b) => b.inicio.localeCompare(a.inicio))[0];
@@ -258,6 +260,7 @@ function render() {
     inicio: viewHome, pets: viewPets, pet: viewPet, carteira: viewCarteira, agenda: viewAgenda, gastos: viewGastos,
     entrar: (id) => (typeof viewEntrar === 'function' ? viewEntrar(id) : viewHome()), // tela de login (sync.js)
     painel: (id) => (typeof viewPainel === 'function' ? viewPainel(id) : viewHome()), // painel de uso (sync.js)
+    convite: (id) => (typeof viewConvite === 'function' ? viewConvite(id) : viewHome()), // convite para a família (familia.js)
   };
   // o app só funciona com conta: sem login, qualquer tela vira a tela de login
   const mustLogin = typeof syncConfigured !== 'undefined' && syncConfigured && typeof isLoggedIn === 'function' && !isLoggedIn();
@@ -1206,6 +1209,7 @@ function petForm(pet) {
         <label class="field"><span>Veterinário</span><input name="veterinario" maxlength="60" value="${esc(p.veterinario)}"></label>
       </div>
       <label class="field"><span>Observações</span><textarea name="obs" maxlength="1000" placeholder="Alergias, manias, comida favorita...">${esc(p.obs)}</textarea></label>
+      ${autorLinha(pet)}
       <div class="actions">
         <button type="button" class="btn plain" data-action="close-sheet">Cancelar</button>
         <button class="btn" type="submit">Salvar</button>
@@ -1292,6 +1296,7 @@ function careForm(care, petId) {
       </div>
       ${care ? `<label class="check-field"><input type="checkbox" name="feito" ${c.feito ? 'checked' : ''}> Já foi feito</label>` : ''}
       ${care && !care.feito ? `<button type="button" class="btn plain" data-action="care-ics" data-id="${care.id}">${icon('calendar-plus', { size: 18 })}Adicionar ao calendário do celular</button>` : ''}
+      ${autorLinha(care)}
       <div class="actions">
         ${care ? `<button type="button" class="btn danger" data-action="delete-care" data-id="${care.id}">Apagar</button>` : `<button type="button" class="btn plain" data-action="close-sheet">Cancelar</button>`}
         <button class="btn" type="submit">Salvar</button>
@@ -1470,6 +1475,7 @@ function expenseForm(g, petId) {
         <label class="field"><span>Categoria</span><select name="categoria">${options(EXPENSE_CATS, e.categoria)}</select></label>
         <label class="field"><span>Pet</span><select name="petId">${petOptions(e.petId, true)}</select></label>
       </div>
+      ${autorLinha(g)}
       <div class="actions">
         ${g ? `<button type="button" class="btn danger" data-action="delete-expense" data-id="${g.id}">Apagar</button>` : `<button type="button" class="btn plain" data-action="close-sheet">Cancelar</button>`}
         <button class="btn" type="submit">Salvar</button>
@@ -1507,6 +1513,7 @@ function foodForm(r, petId) {
       </div>
       <label class="field"><span>Preço (R$)</span><input type="number" name="preco" step="0.01" min="0" inputmode="decimal" value="${f.preco ?? ''}" placeholder="Opcional"></label>
       ${!r ? '<label class="check-field"><input type="checkbox" name="lancar" checked> Lançar o preço nos gastos</label>' : ''}
+      ${autorLinha(r)}
       <div class="actions">
         ${r ? `<button type="button" class="btn danger" data-action="delete-food" data-id="${r.id}">Apagar</button>` : '<button type="button" class="btn plain" data-action="close-sheet">Cancelar</button>'}
         <button class="btn" type="submit">Salvar</button>
@@ -1672,7 +1679,7 @@ function exportICS(cares, name) {
 }
 
 /* ---- Menu de perfil ("Minha conta") e Configurações ---- */
-const APP_VERSION = '1.4.2';
+const APP_VERSION = '1.5.0';
 const SUPORTE_EMAIL = 'tavoschlickmann@gmail.com';
 
 const contaAtual = () => (typeof session !== 'undefined' && session?.user) || null;
@@ -1691,14 +1698,15 @@ function avatarConta(size = '') {
 // foto que não carrega: ficam as iniciais
 document.addEventListener('error', (e) => { if (e.target.matches?.('.me-avatar img')) e.target.remove(); }, true);
 
-function menuRow(action, ic, label, sub = '', { danger = false, chevron = true, href = '' } = {}) {
+function menuRow(action, ic, label, sub = '', { danger = false, chevron = true, href = '', data = {} } = {}) {
+  const attrs = Object.entries(data).map(([k, v]) => ` data-${k}="${esc(v)}"`).join('');
   const inner = `
     <span class="menu-ico">${icon(ic, { size: 20 })}</span>
     <span class="row-body"><span class="row-title">${esc(label)}</span>${sub ? `<span class="row-sub">${esc(sub)}</span>` : ''}</span>
     ${chevron ? `<span class="menu-chev">${icon(href ? 'external-link' : 'chevron-right', { size: 18 })}</span>` : ''}`;
   return href
     ? `<a class="menu-row" href="${href}" target="_blank" rel="noopener">${inner}</a>`
-    : `<button type="button" class="menu-row ${danger ? 'danger' : ''}" data-action="${action}">${inner}</button>`;
+    : `<button type="button" class="menu-row ${danger ? 'danger' : ''}" data-action="${action}"${attrs}>${inner}</button>`;
 }
 
 function profileMenu() {
@@ -1716,6 +1724,7 @@ function profileMenu() {
         </span>
       </button>
       <nav class="menu-list" aria-label="Opções da conta">
+        ${typeof familiaMenuRow === 'function' ? familiaMenuRow() : ''}
         ${menuRow('menu-config', 'settings', 'Configurações', 'Lembretes, aparência, calendário e conta')}
         ${typeof canInstall === 'function' && canInstall() ? menuRow('install', 'smartphone', 'Instalar o app', 'Ícone na tela inicial do celular') : ''}
         ${admin ? menuRow('go-painel', 'chart-column', 'Painel de uso', 'Visível só para você') : ''}
