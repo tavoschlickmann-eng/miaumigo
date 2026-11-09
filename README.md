@@ -61,3 +61,13 @@ Opcional: sem conta, tudo funciona só no aparelho. Com conta, os dados viram um
 - `icons.js`: ícones Lucide embutidos
 - `sw.js`, `manifest.webmanifest`, `icon.svg`: PWA (offline, instalação e notificações)
 - `serve.ps1`: servidor local em PowerShell
+
+## Menu "Minha conta" (v1.4)
+
+- O avatar no topo do início abre o menu: Configurações (Lembretes, Aparência, Calendário, Conta), Instalar o app, Painel de uso (só administradores), Ajuda e sobre, Sair.
+- "Baixar meus dados" (Configurações → Conta) substitui o backup/importação.
+- **Instalar o app** (`install.js`): no Android/computador abre a janela nativa de instalação; no iPhone mostra o passo a passo do Safari; em navegadores internos (WhatsApp, Instagram) orienta a abrir no navegador.
+
+## Manter o Supabase ativo
+
+O plano gratuito pausa após 7 dias sem atividade. A tarefa `.github/workflows/manter-ativo.yml` chama `ping()` (`supabase/ping.sql`) todo dia às 08:17. Se falhar, o GitHub avisa por e-mail. O GitHub desativa tarefas agendadas após 60 dias sem commits no repositório (avisa antes); para reativar, faça um commit ou clique em "Enable workflow" na aba Actions.

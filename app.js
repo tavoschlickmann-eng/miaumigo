@@ -330,16 +330,14 @@ function viewHome() {
         <p class="sub">${greeting()}</p>
       </div>
       <div class="top-actions">
-        ${typeof syncBadge === 'function' ? syncBadge() : ''}
-        <button class="icon-btn" data-action="settings" aria-label="Configurações">${icon('settings')}</button>
+        ${typeof syncBadge === 'function' ? syncBadge() : `<button class="icon-btn" data-action="profile" aria-label="Minha conta">${icon('user')}</button>`}
       </div>
     </header>`;
 
   if (!db.pets.length) {
-    return header + `<div class="card">${emptyState('cat', 'Bem-vindo ao Miaumigo!',
+    return header + (typeof installBanner === 'function' ? installBanner() : '') + `<div class="card">${emptyState('cat', 'Bem-vindo ao Miaumigo!',
       'Cadastre seus pets para acompanhar vacinas, remédios, peso e gastos em um só lugar.',
-      `<button class="btn" data-action="add-pet">Cadastrar meu primeiro pet</button>
-       <button class="btn plain" data-action="demo">Ver com dados de exemplo</button>`)}</div>`;
+      '<button class="btn" data-action="add-pet">Cadastrar meu primeiro pet</button>')}</div>`;
   }
 
   const t = today();
@@ -381,6 +379,7 @@ function viewHome() {
       <a class="card stat" href="#/gastos"><div class="num">${monthTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</div><div class="lbl">no mês</div></a>
     </div>
 
+    ${typeof installBanner === 'function' ? installBanner() : ''}
     ${reminderBanner}
     ${foodBanners}
     ${birthdays}
@@ -405,7 +404,8 @@ function viewHome() {
 function greeting() {
   const h = new Date().getHours();
   const g = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
-  return `${g}! Veja como estão seus pets.`;
+  const nome = contaAtual() ? nomeConta().split(' ')[0] : '';
+  return `${g}${nome ? `, ${esc(nome)}` : ''}! Veja como estão seus pets.`;
 }
 
 /* ---- Lista de pets ---- */
@@ -451,13 +451,13 @@ function viewPet(id) {
     p.castrado ? ['scissors', 'Castrado'] : null,
   ].filter(Boolean);
 
-  const tabs = [['saude', 'Saúde'], ['peso', 'Peso'], ['racao', 'Ração'], ['gastos', 'Gastos'], ['sobre', 'Sobre']];
-  const tabBody = { saude: petHealth, peso: petWeight, racao: petFood, gastos: petExpenses, sobre: petAbout }[ui.petTab] || petHealth;
+  const tabs = [['saude', 'Saúde'], ['peso', 'Peso'], ['racao', 'Ração'], ['gastos', 'Gastos']];
+  const tabBody = { saude: petHealth, peso: petWeight, racao: petFood, gastos: petExpenses }[ui.petTab] || petHealth;
 
   return `
     <div class="top" style="margin-bottom:0">
       <a class="back" href="#/pets">${icon('chevron-left', { size: 18 })}Pets</a>
-      <button class="icon-btn" data-action="edit-pet" data-id="${p.id}" aria-label="Editar pet">${icon('pencil', { size: 18 })}</button>
+      <button class="icon-btn" data-action="pet-about" data-id="${p.id}" aria-label="Sobre ${esc(p.nome)} e editar perfil">${icon('pencil', { size: 18 })}</button>
     </div>
     <div class="pet-hero">
       ${avatar(p, 'lg')}
@@ -608,7 +608,8 @@ function petExpenses(p) {
     </section>`;
 }
 
-function petAbout(p) {
+/** "Sobre" do pet: abre pelo lápis no topo do perfil. */
+function petAboutSheet(p) {
   const rows = [
     ['Espécie', SPECIES[p.especie]?.label],
     ['Raça', p.raca],
@@ -619,15 +620,13 @@ function petAbout(p) {
     ['Microchip', p.microchip],
     ['Veterinário', p.veterinario],
   ].filter(([, v]) => v);
-  return `
-    <section class="section">
+  openSheet(`Sobre ${esc(p.nome)}`, `
+    <div class="menu">
       <div class="card info"><dl style="margin:0">${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl></div>
-    </section>
-    ${p.obs ? `<section class="section"><div class="section-head"><h2>Observações</h2></div><div class="card notes">${esc(p.obs)}</div></section>` : ''}
-    <section class="section" style="display:flex;gap:10px">
-      <button class="btn plain block" data-action="edit-pet" data-id="${p.id}">${icon('pencil', { size: 16 })}Editar perfil</button>
-      <button class="btn danger block" data-action="delete-pet" data-id="${p.id}">${icon('trash-2', { size: 16 })}Remover pet</button>
-    </section>`;
+      ${p.obs ? `<h3 class="menu-title">${icon('clipboard-list', { size: 18 })}Observações</h3><div class="card notes">${esc(p.obs)}</div>` : ''}
+      <button class="btn" data-action="edit-pet" data-id="${p.id}">${icon('pencil', { size: 18 })}Editar perfil</button>
+      <button class="btn danger" data-action="delete-pet" data-id="${p.id}">${icon('trash-2', { size: 18 })}Remover pet</button>
+    </div>`, null);
 }
 
 /* ---- Carteirinha de vacinação ---- */
@@ -825,11 +824,18 @@ const sheetBody = $('#sheet-body');
 let onSheetSubmit = null;
 let pendingPhoto = undefined; // undefined = sem alteração, null = remover, string = nova foto
 
-function openSheet(title, content, onSubmit) {
+let sheetBack = null; // função para o botão "voltar" de submenus
+
+function openSheet(title, content, onSubmit, { back = null } = {}) {
   onSheetSubmit = onSubmit;
+  sheetBack = back;
   sheetBody.innerHTML = `
     <div class="sheet-inner">
-      <div class="sheet-head"><h2 id="sheet-title">${title}</h2><button class="icon-btn" data-action="close-sheet" aria-label="Fechar">${icon('x')}</button></div>
+      <div class="sheet-head">
+        ${back ? `<button class="icon-btn ghost sheet-back" data-action="sheet-back" aria-label="Voltar">${icon('chevron-left')}</button>` : ''}
+        <h2 id="sheet-title">${title}</h2>
+        <button class="icon-btn" data-action="close-sheet" aria-label="Fechar">${icon('x')}</button>
+      </div>
       ${content}
     </div>`;
   enhanceSelects(sheetBody);
@@ -1665,41 +1671,141 @@ function exportICS(cares, name) {
   toast('Abra o arquivo para adicionar ao seu calendário');
 }
 
-/* ---- Configurações ---- */
-function settingsSheet() {
-  const theme = document.documentElement.dataset.theme || 'auto';
-  const perm = notifSupported() ? Notification.permission : 'unsupported';
-  const status = !notifSupported() ? 'Este navegador não suporta notificações.'
-    : perm === 'denied' ? 'Notificações bloqueadas no navegador. Libere nas permissões do site.'
-    : db.config.lembretes ? 'Você será avisado quando abrir o app ou se ele estiver aberto em segundo plano.'
-    : 'Desativados.';
+/* ---- Menu de perfil ("Minha conta") e Configurações ---- */
+const APP_VERSION = '1.4.0';
+const SUPORTE_EMAIL = 'tavoschlickmann@gmail.com';
+
+const contaAtual = () => (typeof session !== 'undefined' && session?.user) || null;
+function nomeConta() {
+  const u = contaAtual();
+  return u?.user_metadata?.name || u?.user_metadata?.full_name || (u?.email ? u.email.split('@')[0] : 'Você');
+}
+const iniciais = (n) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase() || '?';
+
+/** Foto da conta (Google) ou as iniciais. */
+function avatarConta(size = '') {
+  const u = contaAtual();
+  const foto = u?.user_metadata?.avatar_url || u?.user_metadata?.picture;
+  return `<span class="me-avatar ${size}"><span class="me-ini">${esc(iniciais(nomeConta()))}</span>${foto ? `<img src="${esc(foto)}" alt="" referrerpolicy="no-referrer">` : ''}</span>`;
+}
+// foto que não carrega: ficam as iniciais
+document.addEventListener('error', (e) => { if (e.target.matches?.('.me-avatar img')) e.target.remove(); }, true);
+
+function menuRow(action, ic, label, sub = '', { danger = false, chevron = true, href = '' } = {}) {
+  const inner = `
+    <span class="menu-ico">${icon(ic, { size: 20 })}</span>
+    <span class="row-body"><span class="row-title">${esc(label)}</span>${sub ? `<span class="row-sub">${esc(sub)}</span>` : ''}</span>
+    ${chevron ? `<span class="menu-chev">${icon(href ? 'external-link' : 'chevron-right', { size: 18 })}</span>` : ''}`;
+  return href
+    ? `<a class="menu-row" href="${href}" target="_blank" rel="noopener">${inner}</a>`
+    : `<button type="button" class="menu-row ${danger ? 'danger' : ''}" data-action="${action}">${inner}</button>`;
+}
+
+function profileMenu() {
+  const u = contaAtual();
+  const admin = typeof isAdmin !== 'undefined' && isAdmin;
+  const status = typeof syncStatusText === 'function' ? syncStatusText() : '';
+  openSheet('Minha conta', `
+    <div class="menu">
+      <button type="button" class="account me-card" data-action="sync-now" aria-label="Sincronizar agora">
+        ${avatarConta('lg')}
+        <span class="row-body">
+          <span class="row-title">${esc(nomeConta())}</span>
+          ${u?.email ? `<span class="row-sub">${esc(u.email)}</span>` : ''}
+          ${status ? `<span class="row-sub sync-line" id="sync-status">${esc(status)}</span>` : ''}
+        </span>
+      </button>
+      <nav class="menu-list" aria-label="Opções da conta">
+        ${menuRow('menu-config', 'settings', 'Configurações', 'Lembretes, aparência, calendário e conta')}
+        ${typeof canInstall === 'function' && canInstall() ? menuRow('install', 'smartphone', 'Instalar o app', 'Ícone na tela inicial do celular') : ''}
+        ${admin ? menuRow('go-painel', 'chart-column', 'Painel de uso', 'Visível só para você') : ''}
+        ${menuRow('menu-ajuda', 'circle-help', 'Ajuda e sobre', `Versão ${APP_VERSION}`)}
+      </nav>
+      ${u ? `<nav class="menu-list">${menuRow('logout', 'log-out', 'Sair da conta', '', { danger: true, chevron: false })}</nav>` : ''}
+    </div>`, null);
+}
+const settingsSheet = profileMenu; // nome antigo, usado pelo sync.js
+
+function configMenu() {
+  const lembretesOn = db.config.lembretes && notifSupported() && Notification.permission === 'granted';
+  const tema = { auto: 'automático', light: 'claro', dark: 'escuro' }[document.documentElement.dataset.theme || 'auto'];
   openSheet('Configurações', `
+    <div class="menu">
+      <nav class="menu-list">
+        ${menuRow('cfg-lembretes', 'bell', 'Lembretes', lembretesOn ? `Ativados · aviso às ${db.config.horario}` : 'Desativados')}
+        ${menuRow('cfg-aparencia', 'palette', 'Aparência', `Tema ${tema}`)}
+        ${menuRow('cfg-calendario', 'calendar-plus', 'Calendário', 'Enviar a agenda para o celular')}
+        ${menuRow('cfg-conta', 'user', 'Conta', contaAtual()?.email || '')}
+      </nav>
+    </div>`, null, { back: profileMenu });
+}
+
+function remindersSheet() {
+  const perm = notifSupported() ? Notification.permission : 'unsupported';
+  const status = !notifSupported() ? 'Este navegador não suporta notificações. Use o calendário para receber os avisos.'
+    : perm === 'denied' ? 'Notificações bloqueadas no navegador. Libere nas permissões do site.'
+    : db.config.lembretes ? 'Você é avisado quando abre o app ou quando ele está aberto em segundo plano.'
+    : 'Ative para ser avisado antes de vacinas, remédios e quando a ração estiver acabando.';
+  openSheet('Lembretes', `
     <div class="menu form">
-      ${typeof accountSection === 'function' ? accountSection() : ''}
-      <h3 class="menu-title">${icon('bell', { size: 18 })}Lembretes</h3>
       <label class="check-field"><input type="checkbox" data-reminder-toggle ${db.config.lembretes && perm === 'granted' ? 'checked' : ''} ${notifSupported() ? '' : 'disabled'}> Notificações neste aparelho</label>
       <label class="field"><span>Horário do aviso</span><input type="time" data-reminder-time value="${esc(db.config.horario)}"></label>
       <p>${status}</p>
       ${db.config.lembretes && perm === 'granted' ? `<button class="btn plain" data-action="test-notification">${icon('bell-ring', { size: 18 })}Testar notificação</button>` : ''}
-      <button class="btn plain" data-action="export-ics">${icon('calendar-plus', { size: 18 })}Enviar agenda para o calendário</button>
-      <p>Para garantir o aviso mesmo com o app fechado, envie a agenda para o calendário do celular (Google Agenda, Apple, Outlook). Os alertas vão junto.</p>
+    </div>`, null, { back: configMenu });
+}
 
-      <h3 class="menu-title">${icon('sun', { size: 18 })}Aparência</h3>
+function aparenciaSheet() {
+  const theme = document.documentElement.dataset.theme || 'auto';
+  openSheet('Aparência', `
+    <div class="menu form">
       <label class="field"><span>Tema</span>
         <select data-theme-select>
-          <option value="auto" ${theme === 'auto' ? 'selected' : ''}>Automático</option>
+          <option value="auto" ${theme === 'auto' ? 'selected' : ''}>Automático (igual ao celular)</option>
           <option value="light" ${theme === 'light' ? 'selected' : ''}>Claro</option>
           <option value="dark" ${theme === 'dark' ? 'selected' : ''}>Escuro</option>
         </select>
       </label>
+    </div>`, null, { back: configMenu });
+}
 
-      <h3 class="menu-title">${icon('package', { size: 18 })}Dados</h3>
-      <p>Seus dados ficam salvos só neste navegador. Faça backup de vez em quando.</p>
-      <button class="btn plain" data-action="export">${icon('download', { size: 18 })}Exportar backup (.json)</button>
-      <button class="btn plain" data-action="import">${icon('upload', { size: 18 })}Importar backup</button>
-      ${db.pets.length ? '' : `<button class="btn plain" data-action="demo">${icon('paw-print', { size: 18 })}Carregar dados de exemplo</button>`}
-      <button class="btn danger" data-action="reset">${icon('trash-2', { size: 18 })}Apagar todos os dados</button>
-    </div>`, null);
+function calendarioSheet() {
+  openSheet('Calendário', `
+    <div class="menu">
+      <p>Envie os cuidados pendentes para o calendário do celular (Google Agenda, Apple, Outlook). Os alertas vão junto, então você é avisado <b>mesmo com o app fechado</b>.</p>
+      <button class="btn" data-action="export-ics">${icon('calendar-plus', { size: 18 })}Enviar agenda para o calendário</button>
+    </div>`, null, { back: configMenu });
+}
+
+function contaSheet() {
+  const u = contaAtual();
+  const provs = (u?.app_metadata?.providers || []).map((p) => ({ google: 'Google', email: 'E-mail e senha' }[p] || p)).join(' e ');
+  openSheet('Conta', `
+    <div class="menu">
+      <div class="info card"><dl style="margin:0">
+        <div><dt>E-mail</dt><dd>${esc(u?.email || '—')}</dd></div>
+        ${provs ? `<div><dt>Entra com</dt><dd>${esc(provs)}</dd></div>` : ''}
+      </dl></div>
+      <h3 class="menu-title">${icon('file-down', { size: 18 })}Seus dados</h3>
+      <p>Baixe uma cópia de tudo o que você cadastrou (pets, cuidados, pesos, gastos, ração e anexos) em um arquivo. É um direito seu pela LGPD.</p>
+      <button class="btn plain" data-action="export">${icon('download', { size: 18 })}Baixar meus dados</button>
+    </div>`, null, { back: configMenu });
+}
+
+function ajudaSheet() {
+  openSheet('Ajuda e sobre', `
+    <div class="menu">
+      <div class="about-card">
+        <span class="about-logo">${icon('paw-print', { size: 30 })}</span>
+        <div><b>Miaumigo</b><span>Versão ${APP_VERSION}</span></div>
+      </div>
+      <nav class="menu-list">
+        ${typeof canInstall === 'function' && canInstall() ? menuRow('install', 'smartphone', 'Como instalar no celular') : ''}
+        ${menuRow('', 'mail', 'Enviar sugestão ou relatar problema', SUPORTE_EMAIL, { href: `mailto:${SUPORTE_EMAIL}?subject=${encodeURIComponent(`Miaumigo ${APP_VERSION}`)}` })}
+        ${menuRow('', 'shield-check', 'Política de Privacidade', '', { href: 'privacidade.html' })}
+      </nav>
+      <p class="form-hint">Ícones: Lucide (ISC). Feito com carinho para quem cuida de pets.</p>
+    </div>`, null, { back: profileMenu });
 }
 
 function applyTheme(t) {
@@ -1727,7 +1833,7 @@ sheet.addEventListener('change', async (e) => {
       toast('Lembretes desativados');
     }
     render();
-    settingsSheet();
+    remindersSheet();
   }
 });
 
@@ -1743,34 +1849,12 @@ async function exportData() {
   try {
     anexos = await Promise.all((await IDB.all()).map(async ({ blob, ...a }) => ({ ...a, dataUrl: await blobToDataURL(blob) })));
   } catch { /* sem anexos */ }
-  downloadFile(`miaumigo-backup-${today()}.json`,
-    JSON.stringify({ app: 'miaumigo', versao: 2, exportadoEm: new Date().toISOString(), ...db, anexos }),
+  const { config, owner, ...dados } = db; // preferências do aparelho não entram
+  downloadFile(`miaumigo-meus-dados-${today()}.json`,
+    JSON.stringify({ app: 'miaumigo', versao: 3, conta: contaAtual()?.email || null, exportadoEm: new Date().toISOString(), ...dados, anexos }, null, 1),
     'application/json');
-  toast(anexos.length ? `Backup exportado com ${anexos.length} anexo(s)` : 'Backup exportado');
+  toast('Seus dados foram baixados');
 }
-
-$('#import-file').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  e.target.value = '';
-  if (!file) return;
-  try {
-    const data = JSON.parse(await file.text());
-    if (!Array.isArray(data.pets)) throw new Error('formato');
-    const cloud = typeof isLoggedIn === 'function' && isLoggedIn() ? ' Como você está conectado, a nuvem também será substituída.' : '';
-    if (!confirm(`Importar ${data.pets.length} pet(s)? Os dados atuais serão substituídos.${cloud}`)) return;
-    db = normalize({ pets: data.pets, cuidados: data.cuidados || [], pesos: data.pesos || [], gastos: data.gastos || [], racoes: data.racoes || [], config: data.config });
-    save(); closeSheet(); render();
-    if (Array.isArray(data.anexos)) {
-      await IDB.clear();
-      for (const { dataUrl, ...a } of data.anexos) {
-        await IDB.put({ ...a, blob: await (await fetch(dataUrl)).blob() });
-      }
-    }
-    toast('Backup importado');
-  } catch {
-    toast('Arquivo inválido');
-  }
-});
 
 function loadDemo() {
   const t = today();
@@ -1825,6 +1909,7 @@ document.addEventListener('click', (e) => {
       db.racoes = db.racoes.filter((x) => x.petId !== id);
       db.gastos.forEach((g) => { if (g.petId === id) g.petId = null; });
       save();
+      closeSheet();
       location.hash = '#/pets';
       toast(`${p.nome} foi removido`);
       break;
@@ -1835,6 +1920,7 @@ document.addEventListener('click', (e) => {
       el.remove();
       break;
     case 'pet-tab': ui.petTab = el.dataset.tab; render(); break;
+    case 'pet-about': { const p = getPet(id); if (p) petAboutSheet(p); break; }
 
     case 'add-care': careForm(null, pet); break;
     case 'edit-care': careForm(db.cuidados.find((c) => c.id === id)); break;
@@ -1898,23 +1984,17 @@ document.addEventListener('click', (e) => {
       break;
     }
 
-    case 'settings': settingsSheet(); break;
+    // menu de perfil e submenus
+    case 'settings':
+    case 'profile': profileMenu(); break;
+    case 'menu-config': configMenu(); break;
+    case 'menu-ajuda': ajudaSheet(); break;
+    case 'cfg-lembretes': remindersSheet(); break;
+    case 'cfg-aparencia': aparenciaSheet(); break;
+    case 'cfg-calendario': calendarioSheet(); break;
+    case 'cfg-conta': contaSheet(); break;
+    case 'sheet-back': if (sheetBack) sheetBack(); break;
     case 'export': exportData(); break;
-    case 'import': $('#import-file').click(); break;
-    case 'demo': loadDemo(); break;
-    case 'reset':
-      {
-        const online = typeof isLoggedIn === 'function' && isLoggedIn();
-        const msg = online
-          ? 'Apagar os dados DESTE APARELHO e sair da conta? Seus dados na nuvem continuam guardados e voltam quando você entrar de novo.'
-          : 'Apagar TODOS os dados do Miaumigo? Isso não pode ser desfeito. Exporte um backup antes, se quiser.';
-        if (!confirm(msg)) return;
-        if (typeof forgetSync === 'function') forgetSync(); // não propaga a exclusão para a nuvem
-      }
-      IDB.clear().catch(() => {});
-      db = emptyDB(); save(); closeSheet(); location.hash = '#/inicio'; render();
-      toast('Tudo apagado');
-      break;
     case 'close-sheet': closeSheet(); break;
   }
 });

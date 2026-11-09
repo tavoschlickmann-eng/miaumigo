@@ -333,15 +333,14 @@ function setSyncStatus(status, error = '') {
   updateSyncUI();
 }
 
+/** Botão "Minha conta" do topo: avatar + pontinho com o status da sincronização. */
 function syncBadge() {
-  if (!syncConfigured && remote === supabaseRemote) return '';
-  const map = !isLoggedIn()
-    ? { ic: 'cloud-off', cls: 'off', label: 'Sem conta: dados só neste aparelho' }
-    : syncState.status === 'syncing' ? { ic: 'refresh-cw', cls: 'spin', label: 'Sincronizando…' }
-    : syncState.status === 'error' ? { ic: 'cloud-off', cls: 'err', label: 'Erro ao sincronizar' }
-    : syncState.status === 'offline' ? { ic: 'cloud-off', cls: 'off', label: 'Sem internet: sincroniza quando voltar' }
-    : { ic: 'cloud-check', cls: 'ok', label: 'Sincronizado' };
-  return `<button class="icon-btn sync-badge ${map.cls}" data-action="settings" aria-label="${map.label}" title="${map.label}">${icon(map.ic)}</button>`;
+  const map = !isLoggedIn() ? { cls: 'off', label: 'Sem conta' }
+    : syncState.status === 'syncing' ? { cls: 'spin', label: 'Sincronizando…' }
+    : syncState.status === 'error' ? { cls: 'err', label: 'Erro ao sincronizar' }
+    : syncState.status === 'offline' ? { cls: 'off', label: 'Sem internet: sincroniza quando voltar' }
+    : { cls: 'ok', label: 'Sincronizado' };
+  return `<button class="me-btn sync-badge ${map.cls}" data-action="profile" aria-label="Minha conta (${map.label})" title="${map.label}">${avatarConta()}<span class="sync-dot" aria-hidden="true"></span></button>`;
 }
 
 function syncStatusText() {
@@ -644,6 +643,7 @@ function viewEntrar() {
         ${recuperar ? '<button type="button" class="link-btn auth-forgot" data-action="auth-mode" data-mode="entrar">Voltar para o login</button>' : ''}
       </div>
 
+      ${typeof canInstall === 'function' && canInstall() ? `<button type="button" class="btn plain install-cta" data-action="install">${icon('smartphone', { size: 18 })}Instalar o app no celular</button>` : ''}
       <p class="auth-foot">É gratuito. Seus dados ficam guardados na sua conta e sincronizados entre aparelhos.<br>
         <a href="privacidade.html">Política de Privacidade</a></p>
     </div>`;

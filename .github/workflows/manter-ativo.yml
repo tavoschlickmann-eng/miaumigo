@@ -1,0 +1,38 @@
+# Mantém o projeto gratuito do Supabase ativo.
+# O plano gratuito pausa o banco após 7 dias sem atividade; esta tarefa
+# chama a função ping() uma vez por dia (supabase/ping.sql).
+#
+# Se falhar, o GitHub manda um e-mail para o dono do repositório.
+# Atenção: o GitHub desativa tarefas agendadas de repositórios sem
+# commits por 60 dias (ele avisa por e-mail antes). Para reativar,
+# é só fazer um commit ou clicar em "Enable workflow" na aba Actions.
+
+name: Manter Supabase ativo
+
+on:
+  schedule:
+    - cron: '17 11 * * *'   # todo dia às 08:17 (horário de Brasília)
+  workflow_dispatch:        # permite rodar manualmente pela aba Actions
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Chamar ping() no banco
+        env:
+          # URL e chave PUBLICÁVEL (as mesmas do config.js, públicas por natureza)
+          SUPABASE_URL: https://kmfjldbkkipsvgpkdrfi.supabase.co
+          SUPABASE_KEY: sb_publishable_1NEl8teWECwIOGE8RCx1lA_xl0TyABF
+        run: |
+          for tentativa in 1 2 3; do
+            code=$(curl -s -o resposta.txt -w '%{http_code}' -X POST "$SUPABASE_URL/rest/v1/rpc/ping" \
+              -H "apikey: $SUPABASE_KEY" -H "Content-Type: application/json" -d '{}')
+            echo "Tentativa $tentativa: HTTP $code $(cat resposta.txt)"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 30
+          done
+          echo "::error::O Supabase não respondeu ao ping. Ele pode estar pausado: abra o painel do Supabase e clique em 'Restore project'."
+          exit 1
