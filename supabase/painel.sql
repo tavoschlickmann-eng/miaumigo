@@ -70,6 +70,15 @@ begin
       'gastos',   (select count(*) from public.registros where tipo = 'gasto'   and not excluido),
       'racoes',   (select count(*) from public.registros where tipo = 'racao'   and not excluido),
       'anexos',   (select count(*) from public.registros where tipo = 'anexo'   and not excluido),
+      'notas',    (select count(*) from public.registros where tipo = 'nota'    and not excluido),
+      'notas_7d', (select count(*) from public.registros where tipo = 'nota'    and not excluido and updated_at > now() - interval '7 days'),
+      'notas_por_etiqueta', (
+        select coalesce(jsonb_object_agg(t, n), '{}'::jsonb)
+        from (select t, count(*) as n
+              from public.registros, jsonb_array_elements_text(case when jsonb_typeof(dados->'tags') = 'array' then dados->'tags' else '[]'::jsonb end) t
+              where tipo = 'nota' and not excluido
+              group by t order by n desc limit 12) x
+      ),
       'familias_com_pet', (select count(distinct familia_id) from public.registros where tipo = 'pet' and not excluido),
       'pets_por_especie', (
         select coalesce(jsonb_object_agg(especie, n), '{}'::jsonb)

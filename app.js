@@ -140,7 +140,7 @@ function colorFor(id) {
 /* ---------------- Data ---------------- */
 
 const defaultConfig = () => ({ lembretes: false, horario: '09:00', avisados: {} });
-const emptyDB = () => ({ pets: [], cuidados: [], pesos: [], gastos: [], racoes: [], config: defaultConfig() });
+const emptyDB = () => ({ pets: [], cuidados: [], pesos: [], gastos: [], racoes: [], notas: [], config: defaultConfig() });
 
 function normalize(d) {
   const base = { ...emptyDB(), ...d };
@@ -456,8 +456,8 @@ function viewPet(id) {
     p.castrado ? ['scissors', 'Castrado'] : null,
   ].filter(Boolean);
 
-  const tabs = [['saude', 'Saúde'], ['peso', 'Peso'], ['racao', 'Ração'], ['gastos', 'Gastos']];
-  const tabBody = { saude: petHealth, peso: petWeight, racao: petFood, gastos: petExpenses }[ui.petTab] || petHealth;
+  const tabs = [['saude', 'Saúde'], ['notas', 'Notas'], ['peso', 'Peso'], ['racao', 'Ração'], ['gastos', 'Gastos']];
+  const tabBody = { saude: petHealth, notas: (x) => (typeof petNotas === 'function' ? petNotas(x) : ''), peso: petWeight, racao: petFood, gastos: petExpenses }[ui.petTab] || petHealth;
 
   return `
     <div class="top" style="margin-bottom:0">
@@ -1148,7 +1148,7 @@ function onSheetClosed() {
   onSheetSubmit = null;
   pendingPhoto = undefined;
   // cuidado novo cancelado: descarta os anexos que já tinham sido guardados
-  if (attachCtx?.draft && !db.cuidados.some((c) => c.id === attachCtx.careId)) deleteAttachmentsOf([attachCtx.careId]);
+  if (attachCtx?.draft && !db.cuidados.some((c) => c.id === attachCtx.careId) && !db.notas.some((n) => n.id === attachCtx.careId)) deleteAttachmentsOf([attachCtx.careId]);
   attachCtx = null;
   attachUrls.forEach(URL.revokeObjectURL);
   attachUrls = [];
@@ -1352,7 +1352,7 @@ async function renderAttachments(careId) {
 }
 
 async function syncAttachCount(careId) {
-  const c = db.cuidados.find((x) => x.id === careId);
+  const c = db.cuidados.find((x) => x.id === careId) || db.notas.find((x) => x.id === careId);
   if (!c) return;
   c.anexos = (await IDB.byCare(careId)).length;
   save();
@@ -1377,7 +1377,7 @@ async function resizeToBlob(file, max = 1600) {
 async function addAttachments(files) {
   if (!attachCtx) return;
   const { careId } = attachCtx;
-  const care = db.cuidados.find((x) => x.id === careId);
+  const care = db.cuidados.find((x) => x.id === careId) || db.notas.find((x) => x.id === careId);
   let added = 0;
   for (const file of files) {
     try {
@@ -1685,7 +1685,7 @@ function exportICS(cares, name) {
 }
 
 /* ---- Menu de perfil ("Minha conta") e Configurações ---- */
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 const SUPORTE_EMAIL = 'tavoschlickmann@gmail.com';
 
 const contaAtual = () => (typeof session !== 'undefined' && session?.user) || null;
@@ -1901,8 +1901,9 @@ document.addEventListener('click', (e) => {
     case 'edit-pet': petForm(getPet(id)); break;
     case 'delete-pet': {
       const p = getPet(id);
-      if (!p || !confirm(`Remover ${p.nome}? Os cuidados e pesagens dele também serão apagados. Os gastos continuam no histórico.`)) return;
-      deleteAttachmentsOf(db.cuidados.filter((x) => x.petId === id).map((x) => x.id));
+      if (!p || !confirm(`Remover ${p.nome}? Os cuidados, pesagens e notas dele também serão apagados. Os gastos continuam no histórico.`)) return;
+      deleteAttachmentsOf([...db.cuidados, ...db.notas].filter((x) => x.petId === id).map((x) => x.id));
+      db.notas = db.notas.filter((x) => x.petId !== id);
       db.pets = db.pets.filter((x) => x.id !== id);
       db.cuidados = db.cuidados.filter((x) => x.petId !== id);
       db.pesos = db.pesos.filter((x) => x.petId !== id);
@@ -2049,6 +2050,6 @@ splashReady('app');
 
 // limpa anexos órfãos (ex.: app fechado com um cuidado novo ainda em rascunho)
 IDB.all().then((all) => {
-  const ids = new Set(db.cuidados.map((c) => c.id));
+  const ids = new Set([...db.cuidados, ...db.notas].map((c) => c.id));
   all.filter((a) => !ids.has(a.careId)).forEach((a) => IDB.del(a.id));
 }).catch(() => {});

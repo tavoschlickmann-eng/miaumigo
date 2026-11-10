@@ -13,7 +13,7 @@
    ========================================================= */
 
 const SYNC_KEY = 'miaumigo:sync';
-const COLLECTIONS = { pet: 'pets', cuidado: 'cuidados', peso: 'pesos', gasto: 'gastos', racao: 'racoes' };
+const COLLECTIONS = { pet: 'pets', cuidado: 'cuidados', peso: 'pesos', gasto: 'gastos', racao: 'racoes', nota: 'notas' };
 const PAGE = 1000;
 
 /* ---------------- Estado ---------------- */
@@ -60,7 +60,8 @@ function espacoDe(rec, tipo) {
   const pessoal = espacos?.pessoal;
   if (tipo === 'pet') return meta?.fam?.[rec.id] || pessoal;
   if (tipo === 'anexo') {
-    const care = db.cuidados.find((c) => c.id === rec.careId);
+    // anexo de um cuidado ou foto de uma nota: vai junto com o dono
+    const care = db.cuidados.find((c) => c.id === rec.careId) || db.notas.find((n) => n.id === rec.careId);
     return care ? espacoDe(care, 'cuidado') : (meta?.anexos?.[rec.id]?.fam || pessoal);
   }
   const pet = rec.petId ? db.pets.find((p) => p.id === rec.petId) : null;
@@ -255,7 +256,7 @@ async function largarEspacosAntigos(meus) {
   if (!fora.size && !anexosFora.length) return false;
   const petsFora = new Set(db.pets.filter((p) => fora.has(p.id)).map((p) => p.id));
   const vai = (r) => fora.has(r.id) || (r.petId && petsFora.has(r.petId));
-  const caresFora = new Set(db.cuidados.filter(vai).map((c) => c.id));
+  const caresFora = new Set([...db.cuidados, ...db.notas].filter(vai).map((c) => c.id));
   for (const name of Object.values(COLLECTIONS)) db[name] = db[name].filter((r) => !vai(r));
   for (const id of fora) { delete meta.hashes[id]; delete meta.fam[id]; delete meta.autores[id]; }
   const locais = await IDB.all().catch(() => []);
@@ -428,9 +429,9 @@ async function syncAttachments(remoteRows) {
   }
 
   if (changed) {
-    // recalcula a contagem de anexos exibida nos cuidados
+    // recalcula a contagem de anexos exibida nos cuidados e nas notas
     const all = await IDB.all();
-    for (const c of db.cuidados) {
+    for (const c of [...db.cuidados, ...db.notas]) {
       const n = all.filter((a) => a.careId === c.id).length;
       if ((c.anexos || 0) !== n) c.anexos = n;
     }
@@ -696,6 +697,15 @@ function viewPainel() {
       </div>
     </section>
 
+    ${c.notas !== undefined ? `
+    <section class="section">
+      <div class="section-head"><h2>Notas</h2><span class="tag">${fmtN(c.notas_7d)} em 7 dias</span></div>
+      <div class="stats" style="grid-template-columns:1fr">
+        <div class="card stat"><div class="num">${fmtN(c.notas)}</div><div class="lbl">notas escritas</div></div>
+      </div>
+      <div class="card" style="margin-top:10px">${hbars(Object.entries(c.notas_por_etiqueta || {}).map(([k, v]) => [k, v, "pencil"]).sort((x, y) => y[1] - x[1]))}</div>
+    </section>
+` : ""}
     <section class="section">
       <div class="section-head"><h2>Pets por espécie</h2></div>
       <div class="card">${hbars(especies)}</div>

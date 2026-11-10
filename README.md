@@ -55,6 +55,8 @@ Opcional: sem conta, tudo funciona só no aparelho. Com conta, os dados viram um
 - `styles.css`: visual (mobile first, modo escuro)
 - `app.js`: dados, telas, formulários e lembretes
 - `sync.js`: login, conta e sincronização com o Supabase
+- `familia.js`: família, convites e pets "Só meus"
+- `notas.js`: notas por pet
 - `config.js`: URL e chave publicável do Supabase
 - `supabase/`: SQL do banco e guia de configuração
 - `vendor/supabase.js`: cliente do Supabase
@@ -78,6 +80,13 @@ Cada pessoa tem pets **"Só meus"** (só ela vê) e pode participar de **uma fam
 - **Sincronização**: começa por `meus_espacos()`; baixa cada espaço desde a última alteração dele e envia cada registro para o espaço certo (o pet decide; cuidados, pesos, ração, gastos e anexos acompanham o pet; gasto "Geral" vai para a família). Ao sair ou ser removido, só os dados da família saem do aparelho. Editar mostra "Alterado por Fulana em ..." nos registros da família.
 - **Painel de uso**: famílias, compartilhadas, pessoas nelas, pets compartilhados, convites criados/aceitos/cancelados em 30 dias.
 - **Testes**: `window.__setSyncRemote(servidorSimulado)` aceita um servidor com `userId`, `rpc`, `pull(espaço, desde)`, `upsert`, `upload`, `download` e `remove`.
+
+## Notas (v1.7)
+
+- Aba **Notas** no perfil de cada pet: linha do tempo agrupada por dia (Hoje, Ontem, …), com data e hora editáveis, texto, foto opcional e quem escreveu ("por Fulana", nos pets da família).
+- **Etiquetas** livres, com cor fixa por nome; sugestões Saúde, Vômito, Diarreia, Alimentação, Comportamento e Veterinário, mais as já usadas. Filtro por etiqueta no topo da aba.
+- Cada nota é um registro tipo `nota` (`petId`, `data`, `hora`, `texto`, `tags`, `autor`); a foto é um anexo comum ligado à nota pelo campo `careId`. Ao compartilhar um pet, as notas e as fotos vão junto ([`supabase/notas.sql`](supabase/notas.sql)). Interface em `notas.js`.
+- **Painel de uso**: total de notas, notas em 7 dias e etiquetas mais usadas.
 
 ## Manter o Supabase ativo
 
