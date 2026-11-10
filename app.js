@@ -1694,7 +1694,7 @@ function exportICS(cares, name) {
 }
 
 /* ---- Menu de perfil ("Minha conta") e Configurações ---- */
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.9.0';
 const SUPORTE_EMAIL = 'tavoschlickmann@gmail.com';
 
 const contaAtual = () => (typeof session !== 'undefined' && session?.user) || null;
@@ -1798,6 +1798,7 @@ function configMenu() {
         </dl></div>
         <p>Baixe uma cópia de tudo o que você cadastrou (pets, cuidados, pesos, gastos, ração e anexos). É um direito seu pela LGPD.</p>
         <button class="btn plain" data-action="export">${icon('download', { size: 18 })}Baixar meus dados</button>
+        ${typeof contaBotoes === 'function' ? contaBotoes() : ''}
       </section>
     </div>`, null, { back: profileMenu });
 }

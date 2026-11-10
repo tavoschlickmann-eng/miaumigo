@@ -1,6 +1,6 @@
 /* Service worker do Miaumigo: funciona offline, atualiza rápido e mostra notificações. */
-const CACHE = 'miaumigo-v13';
-const ASSETS = ['./', 'index.html', 'styles.css', 'icons.js', 'config.js', 'vendor/supabase.js', 'app.js', 'sync.js', 'familia.js', 'notas.js', 'premium.js', 'install.js', 'icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png', 'manifest.webmanifest', 'privacidade.html'];
+const CACHE = 'miaumigo-v14';
+const ASSETS = ['./', 'index.html', 'styles.css', 'icons.js', 'config.js', 'vendor/supabase.js', 'app.js', 'sync.js', 'familia.js', 'notas.js', 'premium.js', 'conta.js', 'install.js', 'icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png', 'manifest.webmanifest', 'privacidade.html'];
 
 self.addEventListener('install', (e) => {
   // cache: 'reload' = baixa do servidor, ignorando o cache do navegador

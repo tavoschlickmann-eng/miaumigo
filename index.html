@@ -2,6 +2,8 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
+  <!-- Segurança: só carrega código deste site; dados só do Supabase do projeto -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://*.googleusercontent.com; connect-src 'self' https://kmfjldbkkipsvgpkdrfi.supabase.co wss://kmfjldbkkipsvgpkdrfi.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Miaumigo</title>
   <meta name="description" content="Cuide da saúde, agenda e gastos dos seus pets em um só lugar.">
@@ -97,6 +99,7 @@
   <script src="familia.js"></script>
   <script src="notas.js"></script>
   <script src="premium.js"></script>
+  <script src="conta.js"></script>
   <script src="install.js"></script>
 </body>
 </html>

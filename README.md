@@ -58,6 +58,7 @@ Opcional: sem conta, tudo funciona só no aparelho. Com conta, os dados viram um
 - `familia.js`: família, convites e pets "Só meus"
 - `notas.js`: notas por pet
 - `premium.js`: planos, avisos de Premium e liberação pelo painel
+- `conta.js`: trocar senha e excluir conta
 - `config.js`: URL e chave publicável do Supabase
 - `supabase/`: SQL do banco e guia de configuração
 - `vendor/supabase.js`: cliente do Supabase
@@ -97,6 +98,14 @@ Cada pessoa tem pets **"Só meus"** (só ela vê) e pode participar de **uma fam
 - **Regras no banco** ([`supabase/premium.sql`](supabase/premium.sql)): tabela `assinaturas` (origem `fundador`, `cortesia`, `teste` e, no futuro, `mercadopago`/`stripe`), função `premium_de()`, gatilho `registros_limites` e regra de envio no Storage. O plano chega ao app em `meus_espacos().plano`.
 - **App** (`premium.js`): Minha conta → Seu plano; tela do Premium (R$ 14,90/mês ou R$ 119,90/ano, "assinatura em breve"); avisos ao passar do limite. **Painel de uso**: números do Premium e "Dar Premium" (por e-mail, tipo e prazo) e remover.
 - Quem tinha conta antes da v1.8 virou **fundador** (Premium sem prazo).
+
+## Conta e segurança (v1.9)
+
+- **Trocar senha** (Configurações → Conta): pede a senha atual. Quem entra com o Google pode **criar uma senha** para também entrar com e-mail.
+- **Excluir conta**: mostra o que será apagado (pets "Só meus" e tudo deles; a família, se a pessoa for a única nela), quem assume como responsável e se o Premium acaba; pede para digitar EXCLUIR. Os arquivos são apagados pelo app e o resto no banco por `excluir_minha_conta()` ([`supabase/conta.sql`](supabase/conta.sql)). Os pets da família continuam com as outras pessoas.
+- **Limite de tamanho**: cada registro tem no máximo 256 KB (o maior hoje, um pet com foto, tem ~40 KB).
+- **Content Security Policy** em `index.html`: só roda código do próprio site e só conversa com o Supabase do projeto (fontes do Google e fotos de perfil do Google liberadas).
+- **E-mails de login em português**: modelos em [`supabase/emails-pt.md`](supabase/emails-pt.md), colados em Authentication → Emails no Supabase.
 
 ## Manter o Supabase ativo
 

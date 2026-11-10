@@ -97,7 +97,7 @@ function avatarMembro(m, size = '') {
 function familiaMenuRow() {
   if (!isLoggedIn()) return '';
   const n = membros().length;
-  const sub = familia ? `${esc(familia.nome)} · ${plural(n, 'pessoa', 'pessoas')}` : 'Compartilhe pets com quem cuida junto';
+  const sub = familia ? `${familia.nome} · ${plural(n, 'pessoa', 'pessoas')}` : 'Compartilhe pets com quem cuida junto';
   return menuRow('menu-familia', 'users', 'Família', sub);
 }
 

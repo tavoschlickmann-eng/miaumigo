@@ -759,3 +759,8 @@ a.card:active, .pet-card:active, button.row:active, .menu-row:active { transform
 .premium-dica { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0 0; font-size: 14px; color: var(--muted); }
 .premium-dica .ico { color: var(--primary); flex: none; margin-top: 1px; }
 .premium-dica .link-btn { padding: 0; }
+
+/* ---------- Conta ---------- */
+.excluir-aviso { display: flex; align-items: center; gap: 8px; color: var(--warn); font-size: 16px; }
+.excluir-lista { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; color: var(--ink); line-height: 1.45; }
+.btn.danger-solid { background: var(--warn); color: #fff; border: 0; }

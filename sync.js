@@ -146,7 +146,19 @@ const supabaseRemote = {
     const { error } = await sb.storage.from('anexos').remove(paths);
     if (error) throw error;
   },
+  // Conta (conta.js): confere a senha atual (se houver) e grava a nova
+  async trocarSenha(atual, nova) {
+    if (atual != null) {
+      const { error } = await sb.auth.signInWithPassword({ email: session?.user?.email, password: atual });
+      if (error) throw new Error('senha atual incorreta');
+    }
+    const { error } = await sb.auth.updateUser({ password: nova });
+    if (error) throw error;
+  },
+  // depois de excluir a conta: só limpa a sessão deste aparelho (a conta já não existe)
+  async encerrar() { await sb.auth.signOut({ scope: 'local' }).catch(() => {}); },
 };
+let contaExcluida = false; // evita o aviso "Você saiu da conta" logo depois de excluir
 
 let remote = supabaseRemote;
 const isLoggedIn = () => !!remote.userId();
@@ -1050,7 +1062,7 @@ if (syncConfigured) {
         wipeLocal();
         authMode = 'entrar';
         location.hash = '#/entrar';
-        if (wasLoggedIn) toast('Você saiu da conta.');
+        if (wasLoggedIn && !contaExcluida) toast('Você saiu da conta.');
       }
       if (event === 'PASSWORD_RECOVERY') authSheet('nova');
       if (event === 'SIGNED_IN' && db.owner && db.owner !== s?.user?.id) {
