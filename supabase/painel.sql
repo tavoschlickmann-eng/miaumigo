@@ -112,7 +112,9 @@ begin
                     where a.fim is null or a.fim > now()),
       'por_origem', (select coalesce(jsonb_object_agg(origem, n), '{}'::jsonb)
                        from (select origem, count(*) as n from public.assinaturas where fim is null or fim > now() group by 1) x),
-      'vencendo_30d', (select count(*) from public.assinaturas where fim between now() and now() + interval '30 days')
+      'vencendo_30d', (select count(*) from public.assinaturas where fim between now() and now() + interval '30 days'),
+      'beta_aberto', public.beta_aberto(),
+      'contas_sem_premium', (select count(*) from auth.users u where not exists (select 1 from public.assinaturas a where a.user_id = u.id and (a.fim is null or a.fim > now())))
     ),
 
     'armazenamento', jsonb_build_object(

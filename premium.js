@@ -29,7 +29,7 @@ function contarPetCriado() {
   if (p && !p.premium) { p.pets_criados = (p.pets_criados || 0) + 1; setEspacos(espacos); }
 }
 
-const ORIGENS = { fundador: 'Fundador', cortesia: 'Cortesia', teste: 'Período de teste', mercadopago: 'Assinatura', stripe: 'Assinatura' };
+const ORIGENS = { fundador: 'Fundador', cortesia: 'Cortesia', teste: 'Período de teste', beta: 'Liberado nos testes', mercadopago: 'Assinatura', stripe: 'Assinatura' };
 
 function planoMenuRow() {
   if (!isLoggedIn()) return '';
@@ -78,6 +78,7 @@ function planoSheet() {
   const fim = p.fim ? new Date(p.fim).toLocaleDateString('pt-BR') : '';
   const origem = p.pela_familia ? `Pelo Premium de <b>${esc(p.titular || 'alguém da família')}</b>, que vale para a família toda.`
     : p.origem === 'fundador' ? 'Você é fundador: Premium sem prazo. Obrigado por estar aqui desde o começo!'
+    : p.origem === 'beta' ? 'Durante o período de testes, o Premium está liberado para todo mundo. Aproveite!'
     : p.origem === 'cortesia' ? 'Premium de cortesia.'
     : 'Sua assinatura Premium.';
   openSheet('Seu plano', `
@@ -111,6 +112,13 @@ function painelPremium(d) {
   return `
     <section class="section">
       <div class="section-head"><h2>Premium</h2><button class="btn sm ghost" data-action="adm-premium-dar">${icon('plus', { size: 16 })}Dar Premium</button></div>
+      <div class="card beta-card ${pr.beta_aberto ? 'on' : ''}">
+        <span class="menu-ico">${icon(pr.beta_aberto ? 'party-popper' : 'lock', { size: 20 })}</span>
+        <div class="row-body"><div class="row-title">Período de testes ${pr.beta_aberto ? 'ligado' : 'desligado'}</div>
+          <div class="row-sub">${pr.beta_aberto ? 'Todo mundo é Premium: ninguém vê limites nem paywall.' : 'Valem os limites do plano grátis para quem não tem Premium.'}</div></div>
+        <button class="btn sm ${pr.beta_aberto ? 'plain' : ''}" data-action="adm-beta" data-ligar="${pr.beta_aberto ? '0' : '1'}">${pr.beta_aberto ? 'Desligar' : 'Ligar'}</button>
+      </div>
+      ${pr.contas_sem_premium ? `<button class="btn plain block" data-action="adm-fundadores" style="margin:10px 0">${icon('sparkles', { size: 18 })}Tornar ${fmtN(pr.contas_sem_premium)} ${pr.contas_sem_premium === 1 ? 'conta' : 'contas'} sem Premium em fundadoras</button>` : ''}
       <div class="stats">
         <div class="card stat"><div class="num">${fmtN(pr.pessoas)}</div><div class="lbl">pessoas com Premium</div></div>
         <div class="card stat"><div class="num">${fmtN(pr.familias)}</div><div class="lbl">famílias cobertas</div></div>
@@ -160,6 +168,19 @@ document.addEventListener('click', async (e) => {
     case 'menu-plano': planoSheet(); break;
     case 'premium': premiumSheet(el.dataset.motivo || ''); break;
     case 'adm-premium-dar': darPremiumSheet(); break;
+    case 'adm-beta': {
+      const ligar = el.dataset.ligar === '1';
+      if (!confirm(ligar ? 'Ligar o período de testes? Todo mundo passa a ser Premium enquanto estiver ligado.' : 'Desligar o período de testes? Quem não tem Premium volta a ter os limites do plano grátis (nada é apagado).')) return;
+      try { await remote.rpc('admin_definir_beta', { p_ligado: ligar }); toast(ligar ? 'Período de testes ligado' : 'Período de testes desligado'); carregarPainel(); syncNow(); }
+      catch (ex) { toast(authError(ex)); }
+      break;
+    }
+    case 'adm-fundadores': {
+      if (!confirm('Dar Premium de fundador, sem prazo, para todas as contas que ainda não têm Premium? Use isso no lançamento, como agradecimento a quem testou.')) return;
+      try { const n = await remote.rpc('admin_testadores_viram_fundadores'); toast(`${n} ${n === 1 ? 'conta virou fundadora' : 'contas viraram fundadoras'}`); carregarPainel(); carregarPremiumAdmin(); }
+      catch (ex) { toast(authError(ex)); }
+      break;
+    }
     case 'adm-premium-remover':
       if (!confirm(`Tirar o Premium de ${el.dataset.email}? Nada é apagado; só os recursos Premium param.`)) return;
       try { await remote.rpc('admin_premium_remover', { p_email: el.dataset.email }); toast('Premium removido'); carregarPainel(); carregarPremiumAdmin(); }

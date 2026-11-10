@@ -98,6 +98,7 @@ Cada pessoa tem pets **"Só meus"** (só ela vê) e pode participar de **uma fam
 - **Regras no banco** ([`supabase/premium.sql`](supabase/premium.sql)): tabela `assinaturas` (origem `fundador`, `cortesia`, `teste` e, no futuro, `mercadopago`/`stripe`), função `premium_de()`, gatilho `registros_limites` e regra de envio no Storage. O plano chega ao app em `meus_espacos().plano`.
 - **App** (`premium.js`): Minha conta → Seu plano; tela do Premium (R$ 14,90/mês ou R$ 119,90/ano, "assinatura em breve"); avisos ao passar do limite. **Painel de uso**: números do Premium e "Dar Premium" (por e-mail, tipo e prazo) e remover.
 - Quem tinha conta antes da v1.8 virou **fundador** (Premium sem prazo).
+- **Período de testes (beta aberto)** ([`supabase/beta.sql`](supabase/beta.sql)): enquanto estiver ligado, todo mundo é Premium (`app_config.beta_aberto`, lido por `premium_de()` e `meu_plano()`). Liga e desliga no Painel de uso → Premium. No lançamento, o botão "Tornar contas sem Premium em fundadoras" dá Premium sem prazo para quem testou.
 
 ## Conta e segurança (v1.9)
 
