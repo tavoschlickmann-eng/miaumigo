@@ -785,3 +785,7 @@ a.card:active, .pet-card:active, button.row:active, .menu-row:active { transform
 .rel-opcoes .check-field input { width: 20px; height: 20px; accent-color: var(--primary); }
 .auth-termos { margin: 0; font-size: 13px; color: var(--muted); text-align: center; }
 .auth-termos a { color: var(--primary); }
+.tag-head { display: flex; align-items: center; justify-content: space-between; }
+.tag-head .link-btn { padding: 2px 4px; font-size: 13px; }
+.tag-pick.gerenciando .etq-op { border-style: dashed; }
+.tag-pick.gerenciando .etq-op .ico { color: var(--warn); }

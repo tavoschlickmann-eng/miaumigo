@@ -89,7 +89,7 @@ Cada pessoa tem pets **"Só meus"** (só ela vê) e pode participar de **uma fam
 ## Notas (v1.7)
 
 - Aba **Notas** no perfil de cada pet: linha do tempo agrupada por dia (Hoje, Ontem, …), com data e hora editáveis, texto, foto opcional e quem escreveu ("por Fulana", nos pets da família).
-- **Etiquetas** livres, com cor fixa por nome; sugestões Saúde, Vômito, Diarreia, Alimentação, Comportamento e Veterinário, mais as já usadas. Filtro por etiqueta no topo da aba.
+- **Etiquetas** livres, com cor fixa por nome; sugestões Saúde, Vômito, Diarreia, Alimentação, Comportamento e Veterinário, mais as já usadas. Filtro por etiqueta no topo da aba. **Gerenciar** (no formulário da nota) apaga uma etiqueta da lista e de todas as notas que a usam; as sugeridas apagadas ficam escondidas neste aparelho (`db.config.etiquetasOcultas`) até alguém criá-las de novo.
 - Cada nota é um registro tipo `nota` (`petId`, `data`, `hora`, `texto`, `tags`, `autor`); a foto é um anexo comum ligado à nota pelo campo `careId`. Ao compartilhar um pet, as notas e as fotos vão junto ([`supabase/notas.sql`](supabase/notas.sql)). Interface em `notas.js`.
 - **Painel de uso**: total de notas, notas em 7 dias e etiquetas mais usadas.
 

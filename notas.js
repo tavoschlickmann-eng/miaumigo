@@ -12,6 +12,7 @@ const ETIQUETAS_SUGERIDAS = ['Saúde', 'Vômito', 'Diarreia', 'Alimentação', '
 const CORES_ETIQUETA = 8;
 const notaUI = { tag: 'todas', petId: null };
 let notaTags = [];      // etiquetas do formulário aberto
+let gerenciando = false; // modo "Gerenciar etiquetas" (tocar apaga da lista)
 let fotoUrls = [];      // fotos mostradas na linha do tempo
 
 const semAcento = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
@@ -27,9 +28,12 @@ function corEtiqueta(t) {
 const etiqueta = (t, extra = '') => `<span class="etq c${corEtiqueta(t)}" ${extra}>${esc(t)}</span>`;
 
 /** Etiquetas já usadas (em qualquer nota) + as sugeridas, sem repetir. */
+/** Sugeridas que a pessoa tirou da lista (Gerenciar etiquetas). */
+const ocultas = () => new Set(db.config.etiquetasOcultas || []);
 function etiquetasConhecidas() {
   const vistas = new Map();
-  [...ETIQUETAS_SUGERIDAS, ...db.notas.flatMap((n) => n.tags || [])].forEach((t) => {
+  const tiradas = ocultas();
+  [...ETIQUETAS_SUGERIDAS.filter((t) => !tiradas.has(semAcento(t))), ...db.notas.flatMap((n) => n.tags || [])].forEach((t) => {
     const k = semAcento(t);
     if (k && !vistas.has(k)) vistas.set(k, t);
   });
@@ -130,16 +134,50 @@ function desenharEtiquetas() {
   if (!box) return;
   const sel = new Set(notaTags.map(semAcento));
   const todas = [...new Map([...etiquetasConhecidas(), ...notaTags].map((t) => [semAcento(t), t])).values()];
+  const btn = document.getElementById('tag-gerenciar');
+  if (btn) btn.textContent = gerenciando ? 'Concluir' : 'Gerenciar';
+  box.classList.toggle('gerenciando', gerenciando);
+  if (gerenciando) {
+    box.innerHTML = todas.length ? todas.map((t) => `
+      <button type="button" class="etq-op c${corEtiqueta(t)}" data-action="nota-tag-del" data-tag="${esc(t)}" aria-label="Apagar a etiqueta ${esc(t)}">
+        ${esc(t)}${icon('x', { size: 14 })}
+      </button>`).join('') : '<p class="hint">Nenhuma etiqueta.</p>';
+    return;
+  }
   box.innerHTML = todas.map((t) => `
     <button type="button" class="etq-op c${corEtiqueta(t)}" data-action="nota-tag" data-tag="${esc(t)}" aria-pressed="${sel.has(semAcento(t))}">
       ${sel.has(semAcento(t)) ? icon('check', { size: 14 }) : ''}${esc(t)}
     </button>`).join('');
 }
 
+/** Tira a etiqueta da lista: some de todas as notas (que continuam) e, se for sugerida, das sugestões. */
+function excluirEtiqueta(t) {
+  const k = semAcento(t);
+  const usam = db.notas.filter((n) => (n.tags || []).some((x) => semAcento(x) === k));
+  const daFamilia = usam.some((n) => typeof petDaFamilia === 'function' && petDaFamilia(n.petId));
+  const msg = usam.length
+    ? `Apagar a etiqueta “${t}”?
+
+Ela sai da lista e de ${usam.length === 1 ? '1 nota' : `${usam.length} notas`}${daFamilia ? ' (inclusive de pets da família)' : ''}. As notas continuam.`
+    : `Tirar a etiqueta “${t}” da lista?`;
+  if (!confirm(msg)) return;
+  usam.forEach((n) => { n.tags = n.tags.filter((x) => semAcento(x) !== k); });
+  notaTags = notaTags.filter((x) => semAcento(x) !== k);
+  if (ETIQUETAS_SUGERIDAS.some((s) => semAcento(s) === k)) {
+    db.config.etiquetasOcultas = [...new Set([...(db.config.etiquetasOcultas || []), k])];
+  }
+  save();
+  render(); // a linha do tempo atrás do formulário também muda
+  desenharEtiquetas();
+  toast(`Etiqueta “${t}” apagada`);
+}
+
 function adicionarEtiqueta() {
   const inp = document.getElementById('tag-nova');
   const t = (inp?.value || '').trim().replace(/\s+/g, ' ').slice(0, 24);
   if (!t) return;
+  // recriar uma sugerida que tinha sido tirada da lista: ela volta
+  if (ocultas().has(semAcento(t))) db.config.etiquetasOcultas = db.config.etiquetasOcultas.filter((k) => k !== semAcento(t));
   const ja = etiquetasConhecidas().find((x) => semAcento(x) === semAcento(t)) || t;
   if (!notaTags.some((x) => semAcento(x) === semAcento(ja))) notaTags.push(ja);
   inp.value = '';
@@ -152,6 +190,7 @@ function notaForm(nota, petId) {
   const notaId = nota?.id || uid();
   attachCtx = { careId: notaId, draft: !nota };
   notaTags = [...(n.tags || [])];
+  gerenciando = false;
   openSheet(nota ? 'Editar nota' : 'Nova nota', `
     <form class="form" autocomplete="off">
       <label class="field"><span>O que aconteceu? *</span>
@@ -162,7 +201,7 @@ function notaForm(nota, petId) {
         <label class="field"><span>Hora</span><input type="time" name="hora" value="${esc(n.hora || '')}"></label>
       </div>
       <div class="field">
-        <span>Etiquetas</span>
+        <span class="tag-head">Etiquetas <button type="button" class="link-btn" id="tag-gerenciar" data-action="nota-tag-gerenciar">Gerenciar</button></span>
         <div class="tag-pick" id="tag-pick"></div>
         <div class="tag-add">
           <input type="text" id="tag-nova" maxlength="24" placeholder="Criar etiqueta" aria-label="Nova etiqueta" enterkeyhint="done">
@@ -223,6 +262,8 @@ document.addEventListener('click', (e) => {
       break;
     }
     case 'nota-tag-add': adicionarEtiqueta(); break;
+    case 'nota-tag-gerenciar': gerenciando = !gerenciando; desenharEtiquetas(); break;
+    case 'nota-tag-del': excluirEtiqueta(el.dataset.tag); break;
   }
 });
 
