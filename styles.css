@@ -768,3 +768,20 @@ a.card:active, .pet-card:active, button.row:active, .menu-row:active { transform
 .beta-card .row-body { flex: 1; min-width: 0; }
 .beta-card .row-title { font-weight: 800; }
 .beta-card.on .menu-ico { background: var(--ok-soft); color: var(--ok); }
+
+/* ---------- Relatório para o veterinário ---------- */
+.pet-docs { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 12px; }
+.rel-opcoes { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.rel-texto { margin: 0 16px 8px; line-height: 1.5; white-space: pre-wrap; }
+.rel-grafico { padding: 0 16px; }
+.rel-grafico svg { width: 100%; height: auto; display: block; }
+.rel-notas { list-style: none; margin: 0 16px; padding: 0; }
+.rel-notas li { padding: 9px 0; border-bottom: 1px solid var(--line); break-inside: avoid; }
+.rel-notas p { margin: 4px 0 0; white-space: pre-wrap; line-height: 1.45; font-size: 14px; }
+.rel-nota-top { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 13px; }
+.rel-nota-top span { color: var(--muted); font-weight: 700; }
+@media print { .relatorio .rel-grafico svg { max-height: 200px; } }
+.rel-opcoes .check-field { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+.rel-opcoes .check-field input { width: 20px; height: 20px; accent-color: var(--primary); }
+.auth-termos { margin: 0; font-size: 13px; color: var(--muted); text-align: center; }
+.auth-termos a { color: var(--primary); }

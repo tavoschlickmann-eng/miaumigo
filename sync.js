@@ -820,6 +820,7 @@ function viewEntrar() {
           </label>` : ''}
           <p class="form-error" id="auth-error" role="alert" hidden></p>
           <button class="btn block" type="submit">${{ entrar: 'Entrar', criar: 'Criar conta', recuperar: 'Enviar link' }[authMode]}</button>
+          ${authMode === 'criar' ? '<p class="auth-termos">Ao criar a conta, você concorda com os <a href="termos.html">Termos de Uso</a> e a <a href="privacidade.html">Política de Privacidade</a>.</p>' : ''}
         </form>
 
         ${authMode === 'entrar' ? '<button type="button" class="link-btn auth-forgot" data-action="auth-mode" data-mode="recuperar">Esqueci minha senha</button>' : ''}
@@ -828,7 +829,7 @@ function viewEntrar() {
 
       ${typeof canInstall === 'function' && canInstall() ? `<button type="button" class="btn plain install-cta" data-action="install">${icon('smartphone', { size: 18 })}Instalar o app no celular</button>` : ''}
       <p class="auth-foot">É gratuito. Seus dados ficam guardados na sua conta e sincronizados entre aparelhos.<br>
-        <a href="privacidade.html">Política de Privacidade</a></p>
+        <a href="termos.html">Termos de Uso</a> · <a href="privacidade.html">Política de Privacidade</a></p>
     </div>`;
 }
 
@@ -981,6 +982,7 @@ async function logout() {
     if (!ok) return;
   }
   closeSheet();
+  if (typeof desligarPushAoSair === 'function') await desligarPushAoSair(); // este aparelho para de receber os lembretes desta conta
   await sb.auth.signOut(); // o evento SIGNED_OUT apaga o aparelho e volta para o login
 }
 

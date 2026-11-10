@@ -44,7 +44,8 @@ const BENEFICIOS = [
   ['paw-print', 'Pets ilimitados', 'No grátis, cada pessoa cadastra 1 pet.'],
   ['paperclip', 'Fotos e anexos', 'Receitas, exames, comprovantes e fotos nas notas.'],
   ['users', 'Para a família toda', 'Uma assinatura vale para todos da família.'],
-  ['bell-ring', 'Em breve', 'Lembretes com o app fechado e relatório para o veterinário.'],
+  ['stethoscope', 'Relatório para o veterinário', 'Saúde, peso, remédios e notas num PDF para a consulta.'],
+  ['bell-ring', 'Lembretes com o app fechado', 'O aviso chega no horário, mesmo sem abrir o app.'],
 ];
 const beneficiosHtml = () => `
   <div class="menu-list premium-lista">
@@ -56,6 +57,8 @@ function premiumSheet(motivo = '') {
   const avisos = {
     pets: 'No plano grátis, cada pessoa cadastra 1 pet. Com o Premium, são ilimitados.',
     anexos: 'Fotos e anexos são do Premium. A foto de perfil do pet continua grátis.',
+    relatorio: 'O relatório para o veterinário é do Premium: saúde, peso, remédios e notas de um período, pronto para imprimir ou salvar em PDF.',
+    push: 'Os lembretes com o app fechado são do Premium. Com o app aberto, os avisos continuam funcionando no grátis.',
   };
   openSheet('Premium', `
     <div class="menu premium">
@@ -68,6 +71,7 @@ function premiumSheet(motivo = '') {
       <div class="premium-preco"><b>${PRECO_MES}</b><span>por mês, para a família toda</span><small>ou ${PRECO_ANO} por ano</small></div>
       <button type="button" class="btn block" disabled>${icon('clock', { size: 18 })}Assinatura em breve</button>
       ${menuRow('', 'mail', 'Quero ser avisado', 'Mande um e-mail e avisamos quando abrir', { href: `mailto:${SUPORTE_EMAIL}?subject=${encodeURIComponent('Quero o Miaumigo Premium')}` })}
+      <p class="form-hint"><a href="termos.html" target="_blank" rel="noopener">Termos de Uso</a>: renovação, cancelamento e reembolso.</p>
     </div>`, null, { back: motivo ? null : profileMenu });
 }
 

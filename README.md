@@ -59,6 +59,9 @@ Opcional: sem conta, tudo funciona só no aparelho. Com conta, os dados viram um
 - `notas.js`: notas por pet
 - `premium.js`: planos, avisos de Premium e liberação pelo painel
 - `conta.js`: trocar senha e excluir conta
+- `relatorio.js`: relatório para o veterinário
+- `push.js`: lembretes com o app fechado (Web Push)
+- `termos.html`, `privacidade.html`: termos de uso e política de privacidade
 - `config.js`: URL e chave publicável do Supabase
 - `supabase/`: SQL do banco e guia de configuração
 - `vendor/supabase.js`: cliente do Supabase
@@ -107,6 +110,15 @@ Cada pessoa tem pets **"Só meus"** (só ela vê) e pode participar de **uma fam
 - **Limite de tamanho**: cada registro tem no máximo 256 KB (o maior hoje, um pet com foto, tem ~40 KB).
 - **Content Security Policy** em `index.html`: só roda código do próprio site e só conversa com o Supabase do projeto (fontes do Google e fotos de perfil do Google liberadas).
 - **E-mails de login em português**: modelos prontos em [`supabase/emails-pt.md`](supabase/emails-pt.md). O Supabase só deixa editar os modelos com SMTP próprio, então eles entram junto com o e-mail próprio (Fase 6).
+
+## Relatório, termos e lembretes com o app fechado (v2.0)
+
+- **Relatório para o veterinário** (Premium, `relatorio.js`, rota `#/relatorio/<pet>`): dados do pet, peso (gráfico e tabela), vacinas e preventivos, remédios e consultas, atrasados, próximos cuidados, ração e notas de um período (30 dias a tudo). Impressão/PDF pelo navegador, com o visual da carteirinha.
+- **Termos de Uso** em [`termos.html`](termos.html): planos, renovação, cancelamento, arrependimento de 7 dias (CDC), responsabilidade. Links no login, no cadastro, em Ajuda e sobre e no Premium.
+- **Lembretes com o app fechado** (Premium, `push.js`): Configurações → Lembretes → "Avisar com o app fechado". O aparelho se inscreve no navegador (Web Push, chave pública VAPID em `push.js`) e a inscrição vai para o banco (`registrar_push`, [`supabase/push.sql`](supabase/push.sql)). No iPhone, só com o app instalado na tela inicial (iOS 16.4+).
+  - **Servidor**: função [`supabase/functions/lembretes`](supabase/functions/lembretes/index.ts) (Edge Function, com "Verify JWT" ligado), chamada a cada 15 minutos pelo agendador do banco (`cron.job` "miaumigo-lembretes", via `pg_net`, com a chave pública anon e o cabeçalho `x-cron-secret`). Ela pergunta `lembretes_para_enviar()` (cuidados não feitos cujo aviso — data menos a antecedência, no horário da pessoa — chegou nas últimas 24 h, só para Premium), envia e marca em `push_enviados`; inscrições mortas são apagadas.
+  - **Segredos** (Edge Functions → Secrets): `VAPID_PUBLIC`, `VAPID_PRIVATE`, `CRON_SECRET`. A chave privada nunca vai para o app nem para o repositório.
+  - Com o push ligado, o app deixa de mostrar os avisos de cuidados ao abrir (evita duplicar); os avisos de ração continuam pelo app. Sair da conta desinscreve o aparelho.
 
 ## Manter o Supabase ativo
 

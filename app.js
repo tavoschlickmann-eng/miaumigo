@@ -271,6 +271,7 @@ function render() {
     entrar: (id) => (typeof viewEntrar === 'function' ? viewEntrar(id) : viewHome()), // tela de login (sync.js)
     painel: (id) => (typeof viewPainel === 'function' ? viewPainel(id) : viewHome()), // painel de uso (sync.js)
     convite: (id) => (typeof viewConvite === 'function' ? viewConvite(id) : viewHome()), // convite para a família (familia.js)
+    relatorio: (id) => (typeof viewRelatorio === 'function' ? viewRelatorio(id) : viewHome()), // relatório para o veterinário (relatorio.js)
   };
   // o app só funciona com conta: sem login, qualquer tela vira a tela de login
   const mustLogin = typeof syncConfigured !== 'undefined' && syncConfigured && typeof isLoggedIn === 'function' && !isLoggedIn();
@@ -279,7 +280,7 @@ function render() {
   app.innerHTML = view(r.id);
   document.body.classList.toggle('no-tabbar', name === 'entrar' && typeof viewEntrar === 'function');
 
-  const activeTab = ['pet', 'carteira'].includes(r.name) ? 'pets' : (views[r.name] ? r.name : 'inicio');
+  const activeTab = ['pet', 'carteira', 'relatorio'].includes(r.name) ? 'pets' : (views[r.name] ? r.name : 'inicio');
   document.querySelectorAll('.tabbar a').forEach((a) => {
     if (a.dataset.tab === activeTab) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
@@ -478,7 +479,10 @@ function viewPet(id) {
       <div class="meta">${esc([p.raca, ageText(p.nascimento)].filter(Boolean).join(' · ') || 'Toque no lápis para completar o perfil')}</div>
       <div class="chips">${chips.map(([ic, l]) => `<span class="chip">${icon(ic, { size: 15 })}${esc(l)}</span>`).join('')}</div>
       ${espTag(p)}
-      <a class="btn sm ghost" href="#/carteira/${p.id}" style="margin-top:12px">${icon('id-card', { size: 16 })}Carteirinha de vacinação</a>
+      <div class="pet-docs">
+        <a class="btn sm ghost" href="#/carteira/${p.id}">${icon('id-card', { size: 16 })}Carteirinha de vacinação</a>
+        <button type="button" class="btn sm ghost" data-action="relatorio" data-id="${p.id}">${icon('stethoscope', { size: 16 })}Relatório para o veterinário</button>
+      </div>
       ${typeof petCompartilharBtn === 'function' ? petCompartilharBtn(p) : ''}
     </div>
     <div class="seg" role="group" aria-label="Seções do pet">
@@ -1604,7 +1608,8 @@ function checkReminders() {
     });
   }
 
-  const due = db.cuidados
+  // com os lembretes do servidor (push) ligados, os de cuidados chegam por lá; aqui só a ração
+  const due = db.config.push ? [] : db.cuidados
     .filter((c) => !c.feito && reminderOf(c) >= 0 && getPet(c.petId))
     .filter((c) => reminderAt(c) <= now && !db.config.avisados[`${c.id}@${c.data}`])
     .sort(byDate);
@@ -1694,7 +1699,7 @@ function exportICS(cares, name) {
 }
 
 /* ---- Menu de perfil ("Minha conta") e Configurações ---- */
-const APP_VERSION = '1.9.1';
+const APP_VERSION = '2.0.0';
 const SUPORTE_EMAIL = 'tavoschlickmann@gmail.com';
 
 const contaAtual = () => (typeof session !== 'undefined' && session?.user) || null;
@@ -1771,6 +1776,7 @@ function configMenu() {
         <label class="field"><span>Horário do aviso</span><input type="time" data-reminder-time value="${esc(db.config.horario)}"></label>
         <p>${status}</p>
         ${lembretesOn ? `<button class="btn plain" data-action="test-notification">${icon('bell-ring', { size: 18 })}Testar notificação</button>` : ''}
+        ${typeof pushSecao === 'function' ? pushSecao() : ''}
       </section>
 
       <section class="config-sec" aria-labelledby="cfg-aparencia">
@@ -1813,6 +1819,7 @@ function ajudaSheet() {
       <nav class="menu-list">
         ${typeof canInstall === 'function' && canInstall() ? menuRow('install', 'smartphone', 'Como instalar no celular') : ''}
         ${menuRow('', 'mail', 'Enviar sugestão ou relatar problema', SUPORTE_EMAIL, { href: `mailto:${SUPORTE_EMAIL}?subject=${encodeURIComponent(`Miaumigo ${APP_VERSION}`)}` })}
+        ${menuRow('', 'file-text', 'Termos de Uso', '', { href: 'termos.html' })}
         ${menuRow('', 'shield-check', 'Política de Privacidade', '', { href: 'privacidade.html' })}
       </nav>
       <p class="form-hint">Ícones: Lucide (ISC). Feito com carinho para quem cuida de pets.</p>
@@ -1833,6 +1840,7 @@ sheet.addEventListener('change', async (e) => {
     db.config.avisados = {};
     save(); render();
     toast(`Avisos às ${db.config.horario}`);
+    if (typeof atualizarPush === 'function') atualizarPush();
   }
   if (e.target.matches('[data-reminder-toggle]')) {
     if (e.target.checked) {

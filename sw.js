@@ -1,6 +1,6 @@
 /* Service worker do Miaumigo: funciona offline, atualiza rápido e mostra notificações. */
-const CACHE = 'miaumigo-v15';
-const ASSETS = ['./', 'index.html', 'styles.css', 'icons.js', 'config.js', 'vendor/supabase.js', 'app.js', 'sync.js', 'familia.js', 'notas.js', 'premium.js', 'conta.js', 'install.js', 'icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png', 'manifest.webmanifest', 'privacidade.html'];
+const CACHE = 'miaumigo-v16';
+const ASSETS = ['./', 'index.html', 'styles.css', 'icons.js', 'config.js', 'vendor/supabase.js', 'app.js', 'sync.js', 'familia.js', 'notas.js', 'premium.js', 'conta.js', 'relatorio.js', 'push.js', 'install.js', 'icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png', 'manifest.webmanifest', 'privacidade.html', 'termos.html'];
 
 self.addEventListener('install', (e) => {
   // cache: 'reload' = baixa do servidor, ignorando o cache do navegador
@@ -49,4 +49,17 @@ self.addEventListener('notificationclick', (e) => {
       return self.clients.openWindow(url);
     })
   );
+});
+
+// Lembretes com o app fechado (Web Push, enviados pela função "lembretes" do Supabase)
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data && e.data.text() }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'Miaumigo', {
+    body: d.body || '',
+    tag: d.tag || 'miaumigo',
+    icon: 'icons/icon-192.png',
+    badge: 'icons/icon-192.png',
+    data: { url: d.url || './#/agenda' },
+  }));
 });

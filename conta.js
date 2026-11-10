@@ -86,7 +86,8 @@ async function excluirConta() {
   if (paths.length) await remote.remove(paths);
   // 2. a conta e os dados (no banco)
   await remote.rpc('excluir_minha_conta');
-  // 3. este aparelho
+  // 3. este aparelho (a inscrição de push no banco já foi junto com a conta)
+  try { (await inscricaoAtual?.())?.unsubscribe(); } catch { /* sem push */ }
   contaExcluida = true;
   await remote.encerrar?.();
   closeSheet();
