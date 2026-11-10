@@ -13,6 +13,7 @@ const CORES_ETIQUETA = 8;
 const notaUI = { tag: 'todas', petId: null };
 let notaTags = [];      // etiquetas do formulário aberto
 let gerenciando = false; // modo "Gerenciar etiquetas" (tocar apaga da lista)
+let tagsNovas = [];     // criadas neste formulário: continuam na lista mesmo desmarcadas
 let fotoUrls = [];      // fotos mostradas na linha do tempo
 
 const semAcento = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
@@ -133,7 +134,7 @@ function desenharEtiquetas() {
   const box = document.getElementById('tag-pick');
   if (!box) return;
   const sel = new Set(notaTags.map(semAcento));
-  const todas = [...new Map([...etiquetasConhecidas(), ...notaTags].map((t) => [semAcento(t), t])).values()];
+  const todas = [...new Map([...etiquetasConhecidas(), ...tagsNovas, ...notaTags].map((t) => [semAcento(t), t])).values()];
   const btn = document.getElementById('tag-gerenciar');
   if (btn) btn.textContent = gerenciando ? 'Concluir' : 'Gerenciar';
   box.classList.toggle('gerenciando', gerenciando);
@@ -163,6 +164,7 @@ Ela sai da lista e de ${usam.length === 1 ? '1 nota' : `${usam.length} notas`}${
   if (!confirm(msg)) return;
   usam.forEach((n) => { n.tags = n.tags.filter((x) => semAcento(x) !== k); });
   notaTags = notaTags.filter((x) => semAcento(x) !== k);
+  tagsNovas = tagsNovas.filter((x) => semAcento(x) !== k);
   if (ETIQUETAS_SUGERIDAS.some((s) => semAcento(s) === k)) {
     db.config.etiquetasOcultas = [...new Set([...(db.config.etiquetasOcultas || []), k])];
   }
@@ -180,6 +182,7 @@ function adicionarEtiqueta() {
   if (ocultas().has(semAcento(t))) db.config.etiquetasOcultas = db.config.etiquetasOcultas.filter((k) => k !== semAcento(t));
   const ja = etiquetasConhecidas().find((x) => semAcento(x) === semAcento(t)) || t;
   if (!notaTags.some((x) => semAcento(x) === semAcento(ja))) notaTags.push(ja);
+  if (!tagsNovas.some((x) => semAcento(x) === semAcento(ja))) tagsNovas.push(ja);
   inp.value = '';
   desenharEtiquetas();
   inp.focus();
@@ -191,6 +194,7 @@ function notaForm(nota, petId) {
   attachCtx = { careId: notaId, draft: !nota };
   notaTags = [...(n.tags || [])];
   gerenciando = false;
+  tagsNovas = [];
   openSheet(nota ? 'Editar nota' : 'Nova nota', `
     <form class="form" autocomplete="off">
       <label class="field"><span>O que aconteceu? *</span>
