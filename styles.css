@@ -744,3 +744,18 @@ a.card:active, .pet-card:active, button.row:active, .menu-row:active { transform
 .etq-op:active { transform: scale(.96); }
 .tag-add { display: flex; gap: 8px; margin-top: 8px; }
 .tag-add input { flex: 1; min-width: 0; }
+
+/* ---------- Premium ---------- */
+.premium-hero { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 4px 4px 2px; }
+.premium-hero b { font-size: 20px; }
+.premium-hero p { margin: 0; }
+.premium-ico { width: 64px; height: 64px; border-radius: 20px; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary) 55%, #F4B860)); }
+.premium-preco { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 0 2px; }
+.premium-preco b { font-size: 26px; }
+.premium-preco span { color: var(--muted); font-size: 14px; }
+.premium-preco small { color: var(--muted); font-size: 13px; }
+.premium-tag { margin-left: 6px; font-size: 11px; font-weight: 800; padding: 1px 8px; border-radius: 999px; background: var(--primary-soft); color: var(--primary); }
+.premium-dica { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0 0; font-size: 14px; color: var(--muted); }
+.premium-dica .ico { color: var(--primary); flex: none; margin-top: 1px; }
+.premium-dica .link-btn { padding: 0; }

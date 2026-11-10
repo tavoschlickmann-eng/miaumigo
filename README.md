@@ -57,6 +57,7 @@ Opcional: sem conta, tudo funciona só no aparelho. Com conta, os dados viram um
 - `sync.js`: login, conta e sincronização com o Supabase
 - `familia.js`: família, convites e pets "Só meus"
 - `notas.js`: notas por pet
+- `premium.js`: planos, avisos de Premium e liberação pelo painel
 - `config.js`: URL e chave publicável do Supabase
 - `supabase/`: SQL do banco e guia de configuração
 - `vendor/supabase.js`: cliente do Supabase
@@ -87,6 +88,15 @@ Cada pessoa tem pets **"Só meus"** (só ela vê) e pode participar de **uma fam
 - **Etiquetas** livres, com cor fixa por nome; sugestões Saúde, Vômito, Diarreia, Alimentação, Comportamento e Veterinário, mais as já usadas. Filtro por etiqueta no topo da aba.
 - Cada nota é um registro tipo `nota` (`petId`, `data`, `hora`, `texto`, `tags`, `autor`); a foto é um anexo comum ligado à nota pelo campo `careId`. Ao compartilhar um pet, as notas e as fotos vão junto ([`supabase/notas.sql`](supabase/notas.sql)). Interface em `notas.js`.
 - **Painel de uso**: total de notas, notas em 7 dias e etiquetas mais usadas.
+
+## Planos: Grátis e Premium (v1.8, ainda sem cobrança)
+
+- **Premium é da família**: quem tem assinatura ativa é Premium, e todos da família dela também (inclusive nos pets "Só meus").
+- **Grátis**: cada pessoa cria 1 pet; fotos e anexos (receitas, exames, fotos nas notas) são do Premium. A foto de perfil do pet e o "Baixar meus dados" são grátis para todos.
+- **Ao deixar de ser Premium nada é apagado**: os pets a mais e os anexos continuam visíveis e podem ser apagados; só não dá para criar novos.
+- **Regras no banco** ([`supabase/premium.sql`](supabase/premium.sql)): tabela `assinaturas` (origem `fundador`, `cortesia`, `teste` e, no futuro, `mercadopago`/`stripe`), função `premium_de()`, gatilho `registros_limites` e regra de envio no Storage. O plano chega ao app em `meus_espacos().plano`.
+- **App** (`premium.js`): Minha conta → Seu plano; tela do Premium (R$ 14,90/mês ou R$ 119,90/ano, "assinatura em breve"); avisos ao passar do limite. **Painel de uso**: números do Premium e "Dar Premium" (por e-mail, tipo e prazo) e remover.
+- Quem tinha conta antes da v1.8 virou **fundador** (Premium sem prazo).
 
 ## Manter o Supabase ativo
 

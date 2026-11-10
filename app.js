@@ -175,6 +175,14 @@ const fullDate = (s) => (s ? parseISO(s).toLocaleDateString('pt-BR') : '');
 /** "Alterado por Fulana em ..." no editar (só em família com 2+ pessoas; familia.js). */
 /** Etiqueta "Só meu" / "Família" (familia.js). `soPessoal`: só a de "Só meu" (lista de pets). */
 const espTag = (p, soPessoal = false) => (typeof petEspacoTag === 'function' && (!soPessoal || !petDaFamilia(p.id)) ? petEspacoTag(p) : '');
+/** Botão de anexar: no plano grátis vira um aviso de Premium (sem fechar o formulário aberto). */
+function anexarBtn(texto, accept, ic) {
+  if (typeof ehPremium === 'function' && !ehPremium()) {
+    return `<button type="button" class="btn plain attach-add" data-action="premium-anexo">${icon('lock', { size: 18 })}${texto}<span class="premium-tag">Premium</span></button>
+      <p class="premium-dica" hidden>${icon('sparkles', { size: 16 })}<span>Fotos e anexos são do Premium. <button type="button" class="link-btn" data-action="premium" data-motivo="anexos">Conhecer o Premium</button></span></p>`;
+  }
+  return `<label class="btn plain attach-add">${icon(ic, { size: 18 })}${texto}<input type="file" accept="${accept}" multiple data-attach hidden></label>`;
+}
 const autorLinha = (rec) => (rec?.id && typeof autorInfo === 'function' ? autorInfo(rec.id) : '');
 
 /* ---- Ração ---- */
@@ -1233,6 +1241,7 @@ function petForm(pet) {
     } else {
       const novo = { id: uid(), criadoEm: today(), ...fields };
       if (typeof definirEspacoNovoPet === 'function') definirEspacoNovoPet(novo.id, !!d.compartilhar);
+      if (typeof contarPetCriado === 'function') contarPetCriado();
       db.pets.push(novo);
       const peso = parseFloat(String(d.peso).replace(',', '.'));
       if (peso > 0) db.pesos.push({ id: uid(), petId: novo.id, data: today(), kg: peso });
@@ -1297,7 +1306,7 @@ function careForm(care, petId) {
       <div class="field">
         <span>Anexos</span>
         <div class="attach-grid" id="attach-grid"></div>
-        <label class="btn plain attach-add">${icon('paperclip', { size: 18 })}Adicionar foto ou PDF<input type="file" accept="image/*,application/pdf" multiple data-attach hidden></label>
+        ${anexarBtn('Adicionar foto ou PDF', 'image/*,application/pdf', 'paperclip')}
         <small>Receitas, exames, comprovante da vacina…</small>
       </div>
       ${care ? `<label class="check-field"><input type="checkbox" name="feito" ${c.feito ? 'checked' : ''}> Já foi feito</label>` : ''}
@@ -1685,7 +1694,7 @@ function exportICS(cares, name) {
 }
 
 /* ---- Menu de perfil ("Minha conta") e Configurações ---- */
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.8.0';
 const SUPORTE_EMAIL = 'tavoschlickmann@gmail.com';
 
 const contaAtual = () => (typeof session !== 'undefined' && session?.user) || null;
@@ -1731,6 +1740,7 @@ function profileMenu() {
       </button>
       <nav class="menu-list" aria-label="Opções da conta">
         ${typeof familiaMenuRow === 'function' ? familiaMenuRow() : ''}
+        ${typeof planoMenuRow === 'function' ? planoMenuRow() : ''}
         ${menuRow('menu-config', 'settings', 'Configurações', 'Lembretes, aparência, calendário e conta')}
         ${typeof canInstall === 'function' && canInstall() ? menuRow('install', 'smartphone', 'Instalar o app', 'Ícone na tela inicial do celular') : ''}
         ${admin ? menuRow('go-painel', 'chart-column', 'Painel de uso', 'Visível só para você') : ''}
@@ -1897,7 +1907,7 @@ document.addEventListener('click', (e) => {
   const { action, id, pet } = el.dataset;
 
   switch (action) {
-    case 'add-pet': petForm(); break;
+    case 'add-pet': if (typeof podeNovoPet === 'function' && !podeNovoPet()) break; petForm(); break;
     case 'edit-pet': petForm(getPet(id)); break;
     case 'delete-pet': {
       const p = getPet(id);

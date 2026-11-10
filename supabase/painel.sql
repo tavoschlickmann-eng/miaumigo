@@ -104,6 +104,17 @@ begin
       'revogados_30d', (select count(*) from public.convites where revogado_em > now() - interval '30 days')
     ),
 
+    -- Premium (Fase 4): assinaturas ativas, famílias cobertas e de onde vieram
+    'premium', jsonb_build_object(
+      'pessoas',  (select count(*) from public.assinaturas where fim is null or fim > now()),
+      'familias', (select count(distinct m2.familia_id) from public.assinaturas a
+                     join public.familia_membros m2 on m2.user_id = a.user_id and not m2.pessoal
+                    where a.fim is null or a.fim > now()),
+      'por_origem', (select coalesce(jsonb_object_agg(origem, n), '{}'::jsonb)
+                       from (select origem, count(*) as n from public.assinaturas where fim is null or fim > now() group by 1) x),
+      'vencendo_30d', (select count(*) from public.assinaturas where fim between now() and now() + interval '30 days')
+    ),
+
     'armazenamento', jsonb_build_object(
       'arquivos', (select count(*) from storage.objects where bucket_id = 'anexos'),
       'bytes',    (select coalesce(sum((metadata->>'size')::bigint), 0) from storage.objects where bucket_id = 'anexos')

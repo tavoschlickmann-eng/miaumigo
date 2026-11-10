@@ -172,7 +172,7 @@ function notaForm(nota, petId) {
       <div class="field">
         <span>Foto</span>
         <div class="attach-grid" id="attach-grid"></div>
-        <label class="btn plain attach-add">${icon('camera', { size: 18 })}Adicionar foto<input type="file" accept="image/*" multiple data-attach hidden></label>
+        ${anexarBtn('Adicionar foto', 'image/*', 'camera')}
       </div>
       ${autorLinha(nota)}
       <div class="actions">

@@ -355,6 +355,10 @@ async function syncNow() {
     }
     saveMeta();
     if (changedLocal) { persistLocal(); render(); }
+    // pet novo enviado: atualiza a contagem do plano (ela veio antes do envio)
+    if (out.some((o) => o.h && o.row.tipo === 'pet' && !o.mudou)) {
+      try { setEspacos({ ...espacos, plano: await remote.rpc('meu_plano') }); } catch { /* fica para a próxima */ }
+    }
 
     /* 3. Anexos */
     await syncAttachments(remoteAnexos);
@@ -363,7 +367,8 @@ async function syncNow() {
     setSyncStatus('ok');
   } catch (e) {
     console.warn('Sincronização falhou', e);
-    setSyncStatus(navigator.onLine ? 'error' : 'offline', e?.message || String(e));
+    const msg = /plano grátis|do Premium/i.test(e?.message || '') ? 'algo passou do limite do plano grátis e não foi enviado' : (e?.message || String(e));
+    setSyncStatus(navigator.onLine ? 'error' : 'offline', msg);
   } finally {
     syncState.running = false;
     if (syncState.again) { syncState.again = false; syncNow(); }
@@ -678,6 +683,8 @@ function viewPainel() {
       </div>
     </section>` : ''}
 
+    ${typeof painelPremium === 'function' ? painelPremium(d) : ''}
+
     <section class="section">
       <div class="section-head"><h2>Como as pessoas entram</h2></div>
       <div class="card">${hbars(provedores)}</div>
@@ -724,7 +731,7 @@ function viewPainel() {
       </div>
     </section>
 
-    <p class="hint">Só números agregados: nenhum dado pessoal de usuários aparece aqui.</p>`;
+    <p class="hint">Só números agregados. Os únicos e-mails que aparecem são os da lista de Premium, para administrar.</p>`;
 }
 
 /* dica ao passar o mouse/tocar nas barras dos gráficos */
