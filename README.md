@@ -105,7 +105,7 @@ Cada pessoa tem pets **"Só meus"** (só ela vê) e pode participar de **uma fam
 - **Excluir conta**: mostra o que será apagado (pets "Só meus" e tudo deles; a família, se a pessoa for a única nela), quem assume como responsável e se o Premium acaba; pede para digitar EXCLUIR. Os arquivos são apagados pelo app e o resto no banco por `excluir_minha_conta()` ([`supabase/conta.sql`](supabase/conta.sql)). Os pets da família continuam com as outras pessoas.
 - **Limite de tamanho**: cada registro tem no máximo 256 KB (o maior hoje, um pet com foto, tem ~40 KB).
 - **Content Security Policy** em `index.html`: só roda código do próprio site e só conversa com o Supabase do projeto (fontes do Google e fotos de perfil do Google liberadas).
-- **E-mails de login em português**: modelos em [`supabase/emails-pt.md`](supabase/emails-pt.md), colados em Authentication → Emails no Supabase.
+- **E-mails de login em português**: modelos prontos em [`supabase/emails-pt.md`](supabase/emails-pt.md). O Supabase só deixa editar os modelos com SMTP próprio, então eles entram junto com o e-mail próprio (Fase 6).
 
 ## Manter o Supabase ativo
 
